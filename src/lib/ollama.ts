@@ -18,6 +18,14 @@ export async function fetchModels(signal?: AbortSignal): Promise<OllamaModel[]> 
   return models as OllamaModel[]
 }
 
+export interface ChatStreamResult {
+  promptTokens: number      // prompt_eval_count from the done chunk (0 if absent)
+  completionTokens: number  // eval_count
+  evalDurationNs: number    // eval_duration
+  totalDurationNs: number   // total_duration
+  loadDurationNs: number    // load_duration
+}
+
 export interface StreamChatParams {
   model: string
   messages: { role: string; content: string }[]
@@ -29,8 +37,9 @@ export interface StreamChatParams {
 /**
  * POST /api/chat with stream:true. Ollama returns newline-delimited JSON; we
  * parse each line defensively and forward `message.content` deltas via onToken.
+ * Returns metadata from the done chunk.
  */
-export async function streamChat(params: StreamChatParams): Promise<void> {
+export async function streamChat(params: StreamChatParams): Promise<ChatStreamResult> {
   const { model, messages, temperature, signal, onToken } = params
 
   const res = await fetch(`${OLLAMA_BASE}/api/chat`, {
@@ -43,11 +52,24 @@ export async function streamChat(params: StreamChatParams): Promise<void> {
   if (!res.ok) throw new Error(await readError(res))
   if (!res.body) throw new Error('Streaming is not supported in this environment')
 
+  const result: ChatStreamResult = {
+    promptTokens: 0, completionTokens: 0,
+    evalDurationNs: 0, totalDurationNs: 0, loadDurationNs: 0,
+  }
+  const num = (v: unknown) => (typeof v === 'number' ? v : 0)
   await readJsonStream(res.body, (obj) => {
     const message = obj.message as { content?: unknown } | undefined
     const content = message?.content
     if (typeof content === 'string' && content) onToken(content)
+    if (obj.done) {
+      result.promptTokens = num(obj.prompt_eval_count)
+      result.completionTokens = num(obj.eval_count)
+      result.evalDurationNs = num(obj.eval_duration)
+      result.totalDurationNs = num(obj.total_duration)
+      result.loadDurationNs = num(obj.load_duration)
+    }
   })
+  return result
 }
 
 // ── Model management ─────────────────────────────────────────────────────
