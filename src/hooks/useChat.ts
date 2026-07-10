@@ -5,6 +5,7 @@ import { fetchModels, isAbortError, streamChat } from '../lib/ollama'
 import { getStore } from '../lib/store'
 import type { Conversation, ConversationMeta } from '../lib/store'
 import { download, slugify, toJSON, toMarkdown } from '../lib/exporters'
+import { loadModelPrefs } from '../lib/modelPrefs'
 
 function newConversation(model: string): Conversation {
   const now = Date.now()
@@ -26,8 +27,20 @@ function deriveTitle(text: string): string {
   return clean.length <= 48 ? clean : `${clean.slice(0, 48).trimEnd()}…`
 }
 
-function errorMessage(detail: string): string {
-  return `⚠️ **Couldn't reach Ollama.** ${detail}\n\nMake sure Ollama is running and the selected model is available, then try again.`
+function toErrorMessage(err: unknown): string {
+  const detail = err instanceof Error ? err.message : 'Unknown error'
+
+  // fetch() itself failed — Ollama isn't reachable.
+  if (err instanceof TypeError || /failed to fetch|networkerror|load failed/i.test(detail)) {
+    return "⚠️ **Couldn't reach Ollama.** Make sure it's running (try `npm run dev:ollama`), then try again."
+  }
+
+  // Ollama replied but the model can't do chat (e.g. an embedding model).
+  if (/does not support|not a chat|embedding|only supports/i.test(detail)) {
+    return `⚠️ **This model can't be used for chat.** ${detail}\n\nEmbedding models (like \`all-minilm\` or \`nomic-embed-text\`) only turn text into vectors — pick a chat model from the selector below.`
+  }
+
+  return `⚠️ ${detail}`
 }
 
 function metaOf(c: Conversation): ConversationMeta {
@@ -88,10 +101,13 @@ export function useChat() {
         setStatus('no-models')
       } else {
         setStatus('online')
-        // Give the open chat a valid model if it lacks one.
-        setCurrent((c) =>
-          c.model && list.some((m) => m.name === c.model) ? c : { ...c, model: list[0].name },
-        )
+        // Give the open chat a valid model if it lacks one (prefer the default).
+        setCurrent((c) => {
+          if (c.model && list.some((m) => m.name === c.model)) return c
+          const pref = loadModelPrefs().defaultModel
+          const model = pref && list.some((m) => m.name === pref) ? pref : list[0].name
+          return { ...c, model }
+        })
       }
     } catch {
       setStatus('offline')
@@ -162,7 +178,7 @@ export function useChat() {
         if (isAbortError(err)) {
           if (!received) content = '_Stopped._'
         } else {
-          content = errorMessage(err instanceof Error ? err.message : 'Unknown error')
+          content = toErrorMessage(err)
         }
         applyContent(content)
       } finally {
@@ -218,7 +234,11 @@ export function useChat() {
   // ── conversation management ──
   const newChat = useCallback(() => {
     abortRef.current?.abort()
-    const model = currentRef.current.model || models[0]?.name || ''
+    const pref = loadModelPrefs().defaultModel
+    const model =
+      pref && models.some((m) => m.name === pref)
+        ? pref
+        : currentRef.current.model || models[0]?.name || ''
     setCurrent(newConversation(model))
     setInput('')
   }, [models])

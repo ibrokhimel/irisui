@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import {
+  Boxes,
   Download,
+  Loader2,
   MoreHorizontal,
   Pencil,
   Plus,
@@ -26,11 +28,15 @@ function groupOf(ts: number): string {
 
 export function Sidebar({
   open,
+  view,
   metas,
   currentId,
   search,
   onSearch,
   onNewChat,
+  onOpenModels,
+  pullActive,
+  pullPercent,
   onSelectChat,
   onRenameChat,
   onDeleteChat,
@@ -38,11 +44,15 @@ export function Sidebar({
   onOpenSettings,
 }: {
   open: boolean
+  view: 'chat' | 'models'
   metas: ConversationMeta[]
   currentId: string
   search: string
   onSearch: (query: string) => void
   onNewChat: () => void
+  onOpenModels: () => void
+  pullActive: boolean
+  pullPercent: number | null
   onSelectChat: (id: string) => void
   onRenameChat: (id: string, title: string) => void
   onDeleteChat: (id: string) => void
@@ -105,6 +115,28 @@ export function Sidebar({
           >
             <Plus className="h-4 w-4 text-iris" />
             New Chat
+          </button>
+        </div>
+
+        {/* Models nav */}
+        <div className="px-3 pt-2">
+          <button
+            onClick={onOpenModels}
+            className={
+              'flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm transition ' +
+              (view === 'models'
+                ? 'bg-panel2 text-fg'
+                : 'text-muted hover:bg-panel2/60 hover:text-fg')
+            }
+          >
+            <Boxes className="h-4 w-4" />
+            Models
+            {pullActive && (
+              <span className="ml-auto flex items-center gap-1 text-[11px] font-medium text-iris">
+                <Loader2 className="h-3 w-3 animate-spin" />
+                {pullPercent !== null ? `${pullPercent}%` : ''}
+              </span>
+            )}
           </button>
         </div>
 

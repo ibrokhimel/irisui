@@ -17,6 +17,12 @@ export default defineConfig({
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/ollama/, ''),
       },
+      // Live model discovery from the Hugging Face API (same-origin via proxy).
+      '/hf': {
+        target: 'https://huggingface.co',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/hf/, ''),
+      },
     },
   },
 })
