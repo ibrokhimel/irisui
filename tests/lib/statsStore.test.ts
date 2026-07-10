@@ -21,4 +21,9 @@ describe('statsStore', () => {
     await clearStats()
     expect(await listStats()).toEqual([])
   })
+
+  it('listStats(0) returns an empty array', async () => {
+    await addStat(mk(1))
+    expect(await listStats(0)).toEqual([])
+  })
 })

@@ -23,7 +23,7 @@ export async function listStats(limit?: number): Promise<GenerationStat[]> {
     req.onerror = () => reject(req.error)
   })
   const sorted = all.sort((a, b) => b.startedAt - a.startedAt)
-  return limit ? sorted.slice(0, limit) : sorted
+  return limit !== undefined ? sorted.slice(0, limit) : sorted
 }
 
 export async function clearStats(): Promise<void> {
