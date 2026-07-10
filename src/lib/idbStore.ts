@@ -8,22 +8,24 @@ import type { ChatStore, Conversation, ConversationMeta } from './store'
  */
 
 const DB_NAME = 'irisui'
-const DB_VERSION = 1
+const DB_VERSION = 2
 const META = 'conversations'
 const MSGS = 'messages'
+export const STATS = 'stats'
 
 interface MsgRecord {
   id: string
   items: ChatMessage[]
 }
 
-function openDB(): Promise<IDBDatabase> {
+export function openDB(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     const req = indexedDB.open(DB_NAME, DB_VERSION)
     req.onupgradeneeded = () => {
       const db = req.result
       if (!db.objectStoreNames.contains(META)) db.createObjectStore(META, { keyPath: 'id' })
       if (!db.objectStoreNames.contains(MSGS)) db.createObjectStore(MSGS, { keyPath: 'id' })
+      if (!db.objectStoreNames.contains(STATS)) db.createObjectStore(STATS, { keyPath: 'id' })
     }
     req.onsuccess = () => resolve(req.result)
     req.onerror = () => reject(req.error)
