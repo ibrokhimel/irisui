@@ -16,6 +16,7 @@
   --color-iris-strong: #ad5639; /* accent, darker (hover / fills) */
   --color-on-accent: #ffffff; /* readable text on the accent */
   --color-code-bg: #141310;
+  --font-brand: "Michroma", ui-sans-serif, sans-serif;
 }
 
 @layer base {

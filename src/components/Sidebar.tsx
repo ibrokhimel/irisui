@@ -12,7 +12,7 @@ import {
   X,
 } from 'lucide-react'
 import type { ConversationMeta } from '../lib/store'
-import { Spark } from './Spark'
+import { IrisMark } from './IrisMark'
 
 const DAY = 86_400_000
 const GROUP_ORDER = ['Today', 'Yesterday', 'Previous 7 days', 'Older']
@@ -100,11 +100,9 @@ export function Sidebar({
     >
       <div className="flex h-full w-72 flex-col">
         {/* Brand */}
-        <div className="flex items-center gap-2.5 px-4 py-4">
-          <Spark className="h-5 w-5 text-iris" />
-          <span className="bg-gradient-to-r from-[var(--color-iris)] to-[var(--color-iris-strong)] bg-clip-text text-[17px] font-semibold tracking-tight text-transparent">
-            IrisUI
-          </span>
+        <div className="flex items-center gap-3 px-4 py-4">
+          <IrisMark className="h-7 w-7 text-fg" />
+          <span className="font-brand text-[13px] tracking-[0.35em] text-fg">IRIS</span>
         </div>
 
         {/* New chat */}

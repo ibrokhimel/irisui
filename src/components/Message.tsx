@@ -1,7 +1,8 @@
 import { useState } from 'react'
-import { Aperture, Check, Copy, RefreshCw } from 'lucide-react'
+import { Check, Copy, RefreshCw } from 'lucide-react'
 import type { ChatMessage } from '../types'
 import { Markdown } from './Markdown'
+import { IrisMark } from './IrisMark'
 
 export function Message({
   message,
@@ -44,7 +45,7 @@ export function Message({
           (streaming ? 'border-iris ring-2 ring-iris/20' : 'border-line')
         }
       >
-        <Aperture className="h-[18px] w-[18px] text-iris" />
+        <IrisMark className="h-[18px] w-[18px] text-iris" />
       </div>
       <div className="min-w-0 flex-1 pt-1">
         {message.content && <Markdown content={message.content} />}
