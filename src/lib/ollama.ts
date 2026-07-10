@@ -40,7 +40,7 @@ export async function streamChat(params: StreamChatParams): Promise<void> {
     signal,
   })
 
-  if (!res.ok) throw new Error(`Ollama responded with ${res.status}`)
+  if (!res.ok) throw new Error(await readError(res))
   if (!res.body) throw new Error('Streaming is not supported in this environment')
 
   await readJsonStream(res.body, (obj) => {
@@ -71,7 +71,8 @@ export async function pullModel(opts: {
     body: JSON.stringify({ name, model: name, stream: true }),
     signal,
   })
-  if (!res.ok || !res.body) throw new Error(`Pull failed (${res.status})`)
+  if (!res.ok) throw new Error(await readError(res))
+  if (!res.body) throw new Error('Pull failed: no response body')
 
   await readJsonStream(res.body, (obj) => {
     if (typeof obj.error === 'string') throw new Error(obj.error)
@@ -90,7 +91,7 @@ export async function deleteModel(name: string): Promise<void> {
     headers: JSON_HEADERS,
     body: JSON.stringify({ name, model: name }),
   })
-  if (!res.ok) throw new Error(`Delete failed (${res.status})`)
+  if (!res.ok) throw new Error(await readError(res))
 }
 
 export interface ModelDetails {
@@ -108,7 +109,7 @@ export async function showModel(name: string): Promise<ModelDetails> {
     headers: JSON_HEADERS,
     body: JSON.stringify({ name, model: name }),
   })
-  if (!res.ok) throw new Error(`Show failed (${res.status})`)
+  if (!res.ok) throw new Error(await readError(res))
   return (await res.json()) as ModelDetails
 }
 
@@ -143,7 +144,8 @@ export async function benchmarkModel(opts: {
     }),
     signal,
   })
-  if (!res.ok || !res.body) throw new Error(`Benchmark failed (${res.status})`)
+  if (!res.ok) throw new Error(await readError(res))
+  if (!res.body) throw new Error('Benchmark failed: no response body')
 
   await readJsonStream(res.body, (obj) => {
     if (typeof obj.error === 'string') throw new Error(obj.error)
@@ -207,6 +209,25 @@ async function readJsonStream(
   } finally {
     reader.releaseLock()
   }
+}
+
+/** Extract a useful message from a non-OK Ollama response (its JSON `error`). */
+async function readError(res: Response): Promise<string> {
+  let detail = ''
+  try {
+    const text = await res.text()
+    if (text) {
+      try {
+        const parsed = JSON.parse(text) as { error?: unknown }
+        if (typeof parsed.error === 'string') detail = parsed.error
+      } catch {
+        detail = text.slice(0, 200)
+      }
+    }
+  } catch {
+    /* ignore body read failures */
+  }
+  return detail || `Ollama responded with ${res.status}`
 }
 
 export function isAbortError(err: unknown): boolean {

@@ -27,8 +27,20 @@ function deriveTitle(text: string): string {
   return clean.length <= 48 ? clean : `${clean.slice(0, 48).trimEnd()}…`
 }
 
-function errorMessage(detail: string): string {
-  return `⚠️ **Couldn't reach Ollama.** ${detail}\n\nMake sure Ollama is running and the selected model is available, then try again.`
+function toErrorMessage(err: unknown): string {
+  const detail = err instanceof Error ? err.message : 'Unknown error'
+
+  // fetch() itself failed — Ollama isn't reachable.
+  if (err instanceof TypeError || /failed to fetch|networkerror|load failed/i.test(detail)) {
+    return "⚠️ **Couldn't reach Ollama.** Make sure it's running (try `npm run dev:ollama`), then try again."
+  }
+
+  // Ollama replied but the model can't do chat (e.g. an embedding model).
+  if (/does not support|not a chat|embedding|only supports/i.test(detail)) {
+    return `⚠️ **This model can't be used for chat.** ${detail}\n\nEmbedding models (like \`all-minilm\` or \`nomic-embed-text\`) only turn text into vectors — pick a chat model from the selector below.`
+  }
+
+  return `⚠️ ${detail}`
 }
 
 function metaOf(c: Conversation): ConversationMeta {
@@ -166,7 +178,7 @@ export function useChat() {
         if (isAbortError(err)) {
           if (!received) content = '_Stopped._'
         } else {
-          content = errorMessage(err instanceof Error ? err.message : 'Unknown error')
+          content = toErrorMessage(err)
         }
         applyContent(content)
       } finally {
