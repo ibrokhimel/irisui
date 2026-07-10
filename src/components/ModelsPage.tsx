@@ -1,13 +1,17 @@
-import { useMemo, useRef, useState, type ReactNode } from 'react'
+import { useMemo, useState, type ReactNode } from 'react'
 import { Boxes, Download, RefreshCw, Search, X } from 'lucide-react'
 import type { OllamaModel, OllamaStatus } from '../types'
-import type { PullProgress } from '../lib/ollama'
-import { deleteModel, pullModel } from '../lib/ollama'
+import { deleteModel } from '../lib/ollama'
+import type { ModelPull } from '../hooks/useModelPull'
 import type { ModelPrefs } from '../lib/modelPrefs'
-import { POPULAR_MODELS } from '../constants'
-import { formatBytes } from '../lib/format'
+import type { ModelCategory } from '../lib/modelCatalog'
+import { MODEL_CATALOG, MODEL_CATEGORIES } from '../lib/modelCatalog'
+import { formatBytes, formatEta, formatSpeed } from '../lib/format'
 import { ModelRow } from './ModelRow'
+import { HuggingFaceBrowser } from './HuggingFaceBrowser'
 import { ConfirmDialog } from './ConfirmDialog'
+
+type Source = 'ollama' | 'hf'
 
 export function ModelsPage({
   models,
@@ -16,6 +20,7 @@ export function ModelsPage({
   prefs,
   onSetDefault,
   onToggleFavorite,
+  pull,
 }: {
   models: OllamaModel[]
   status: OllamaStatus
@@ -23,53 +28,43 @@ export function ModelsPage({
   prefs: ModelPrefs
   onSetDefault: (name: string) => void
   onToggleFavorite: (name: string) => void
+  pull: ModelPull
 }) {
   const [pullName, setPullName] = useState('')
-  const [pulling, setPulling] = useState(false)
-  const [progress, setProgress] = useState<PullProgress | null>(null)
-  const [pullError, setPullError] = useState('')
-  const [pullDone, setPullDone] = useState('')
-  const pullAbort = useRef<AbortController | null>(null)
-
-  const [search, setSearch] = useState('')
+  const [installedSearch, setInstalledSearch] = useState('')
+  const [source, setSource] = useState<Source>('ollama')
+  const [browseSearch, setBrowseSearch] = useState('')
+  const [browseCat, setBrowseCat] = useState<ModelCategory | 'All'>('All')
   const [toDelete, setToDelete] = useState<OllamaModel | null>(null)
   const [deleting, setDeleting] = useState(false)
   const [deleteError, setDeleteError] = useState('')
 
   const installedNames = useMemo(() => new Set(models.map((m) => m.name)), [models])
+  const isInstalled = (name: string) => {
+    if (installedNames.has(name) || installedNames.has(`${name}:latest`)) return true
+    const prefix = `${name}:`
+    for (const n of installedNames) if (n.startsWith(prefix)) return true
+    return false
+  }
 
   const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase()
+    const q = installedSearch.trim().toLowerCase()
     const list = q ? models.filter((m) => m.name.toLowerCase().includes(q)) : models
     const fav = (n: string) => (prefs.favorites.includes(n) ? 1 : 0)
     return [...list].sort((a, b) => fav(b.name) - fav(a.name) || a.name.localeCompare(b.name))
-  }, [models, search, prefs.favorites])
+  }, [models, installedSearch, prefs.favorites])
 
-  const startPull = async (name: string) => {
-    const target = name.trim()
-    if (!target || pulling) return
-    setPulling(true)
-    setProgress({ status: 'starting…' })
-    setPullError('')
-    setPullDone('')
-    const controller = new AbortController()
-    pullAbort.current = controller
-    try {
-      await pullModel({ name: target, signal: controller.signal, onProgress: setProgress })
-      setProgress(null)
-      setPullDone(target)
-      setPullName('')
-      await onRefresh()
-    } catch (e) {
-      setProgress(null)
-      if (!(e instanceof Error && e.name === 'AbortError')) {
-        setPullError(e instanceof Error ? e.message : 'Pull failed')
-      }
-    } finally {
-      setPulling(false)
-      pullAbort.current = null
-    }
-  }
+  const browseList = useMemo(() => {
+    const q = browseSearch.trim().toLowerCase()
+    return MODEL_CATALOG.filter(
+      (m) =>
+        (browseCat === 'All' || m.category === browseCat) &&
+        (!q ||
+          m.name.toLowerCase().includes(q) ||
+          m.label.toLowerCase().includes(q) ||
+          m.blurb.toLowerCase().includes(q)),
+    )
+  }, [browseSearch, browseCat])
 
   const confirmDelete = async () => {
     if (!toDelete) return
@@ -77,7 +72,7 @@ export function ModelsPage({
     setDeleteError('')
     try {
       await deleteModel(toDelete.name)
-      if (prefs.defaultModel === toDelete.name) onSetDefault(toDelete.name) // toggles off
+      if (prefs.defaultModel === toDelete.name) onSetDefault(toDelete.name)
       if (prefs.favorites.includes(toDelete.name)) onToggleFavorite(toDelete.name)
       setToDelete(null)
       await onRefresh()
@@ -88,10 +83,9 @@ export function ModelsPage({
     }
   }
 
-  const percent =
-    progress?.total && progress.total > 0
-      ? Math.min(100, Math.round(((progress.completed ?? 0) / progress.total) * 100))
-      : null
+  const p = pull.progress
+  const percent = p?.total && p.total > 0 ? Math.min(100, Math.round(((p.completed ?? 0) / p.total) * 100)) : null
+  const etaSeconds = p?.total && pull.speed > 0 ? (p.total - (p.completed ?? 0)) / pull.speed : 0
 
   return (
     <div className="flex-1 overflow-y-auto">
@@ -118,22 +112,28 @@ export function ModelsPage({
               value={pullName}
               onChange={(e) => setPullName(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === 'Enter') void startPull(pullName)
+                if (e.key === 'Enter' && pullName.trim()) {
+                  void pull.start(pullName)
+                  setPullName('')
+                }
               }}
-              placeholder="e.g. llama3.1:8b"
-              disabled={pulling}
+              placeholder="Any model name, e.g. llama3.1:8b or hf.co/user/repo"
+              disabled={pull.pulling}
               className="flex-1 rounded-lg border border-line bg-panel2 px-3 py-2 text-sm text-fg outline-none transition focus:border-iris/50 disabled:opacity-60"
             />
-            {pulling ? (
+            {pull.pulling ? (
               <button
-                onClick={() => pullAbort.current?.abort()}
+                onClick={pull.cancel}
                 className="rounded-lg border border-line px-4 py-2 text-sm text-fg transition hover:border-rose-500/50 hover:text-rose-200"
               >
                 Cancel
               </button>
             ) : (
               <button
-                onClick={() => void startPull(pullName)}
+                onClick={() => {
+                  void pull.start(pullName)
+                  setPullName('')
+                }}
                 disabled={!pullName.trim() || status === 'offline'}
                 className="btn-primary flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-medium disabled:opacity-60"
               >
@@ -143,14 +143,19 @@ export function ModelsPage({
             )}
           </div>
 
-          {progress && (
+          {p && (
             <div className="mt-3">
               <div className="mb-1 flex items-center justify-between gap-3 text-xs text-muted">
                 <span className="truncate">
-                  {progress.status}
-                  {progress.total ? ` · ${formatBytes(progress.completed)} / ${formatBytes(progress.total)}` : ''}
+                  {pull.target ? `${pull.target} · ` : ''}
+                  {p.status}
+                  {p.total ? ` · ${formatBytes(p.completed)} / ${formatBytes(p.total)}` : ''}
                 </span>
-                {percent !== null && <span className="shrink-0">{percent}%</span>}
+                <span className="flex shrink-0 items-center gap-2">
+                  {pull.speed > 0 && <span>{formatSpeed(pull.speed)}</span>}
+                  {etaSeconds > 0 && <span>{formatEta(etaSeconds)}</span>}
+                  {percent !== null && <span className="text-fg">{percent}%</span>}
+                </span>
               </div>
               <div className="h-2 overflow-hidden rounded-full bg-panel2">
                 <div
@@ -160,44 +165,104 @@ export function ModelsPage({
               </div>
             </div>
           )}
-          {pullError && <p className="mt-3 text-sm text-rose-300">⚠️ {pullError}</p>}
-          {pullDone && <p className="mt-3 text-sm text-emerald-400">✓ Installed {pullDone}.</p>}
+          {pull.error && <p className="mt-3 text-sm text-rose-300">⚠️ {pull.error}</p>}
+          {pull.done && <p className="mt-3 text-sm text-emerald-400">✓ Installed {pull.done}.</p>}
         </section>
 
-        {/* Popular (simple library) */}
+        {/* Browse */}
         <section className="mb-6">
-          <h2 className="mb-1 text-sm font-semibold text-fg">Popular models</h2>
-          <p className="mb-3 text-xs text-muted">One-click install of well-known models.</p>
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-            {POPULAR_MODELS.map((pm) => {
-              const installed = installedNames.has(pm.name) || installedNames.has(`${pm.name}:latest`)
-              return (
-                <div
-                  key={pm.name}
-                  className="flex items-center gap-3 rounded-xl border border-line bg-panel2/40 px-3 py-2.5"
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <h2 className="text-sm font-semibold text-fg">Browse models</h2>
+            <div className="flex rounded-lg border border-line bg-panel2/60 p-0.5 text-xs">
+              {(['ollama', 'hf'] as const).map((s) => (
+                <button
+                  key={s}
+                  onClick={() => setSource(s)}
+                  className={
+                    'rounded-md px-3 py-1.5 font-medium transition ' +
+                    (source === s ? 'bg-iris text-[var(--color-on-accent)]' : 'text-muted hover:text-fg')
+                  }
                 >
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2">
-                      <span className="truncate text-sm font-medium text-fg">{pm.label}</span>
-                      <span className="shrink-0 text-[11px] text-muted">{pm.approxSize}</span>
-                    </div>
-                    <p className="truncate text-xs text-muted">{pm.blurb}</p>
-                  </div>
-                  {installed ? (
-                    <span className="shrink-0 text-xs text-emerald-400">Installed</span>
-                  ) : (
+                  {s === 'ollama' ? 'Ollama Library' : 'Hugging Face'}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {source === 'ollama' ? (
+            <>
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                <div className="flex flex-wrap gap-1.5">
+                  {(['All', ...MODEL_CATEGORIES] as const).map((cat) => (
                     <button
-                      onClick={() => void startPull(pm.name)}
-                      disabled={pulling}
-                      className="shrink-0 rounded-lg border border-line px-2.5 py-1.5 text-xs text-muted transition hover:border-iris/40 hover:text-fg disabled:opacity-50"
+                      key={cat}
+                      onClick={() => setBrowseCat(cat)}
+                      className={
+                        'rounded-full border px-3 py-1 text-xs transition ' +
+                        (browseCat === cat
+                          ? 'border-iris bg-iris/10 text-fg'
+                          : 'border-line text-muted hover:border-iris/40 hover:text-fg')
+                      }
                     >
-                      Pull
+                      {cat}
+                    </button>
+                  ))}
+                </div>
+                <div className="flex items-center gap-2 rounded-lg border border-line bg-panel2/60 px-2.5 py-1.5 focus-within:border-iris/40">
+                  <Search className="h-3.5 w-3.5 shrink-0 text-muted" />
+                  <input
+                    value={browseSearch}
+                    onChange={(e) => setBrowseSearch(e.target.value)}
+                    placeholder="Filter…"
+                    className="w-28 bg-transparent text-sm text-fg outline-none placeholder:text-muted/70"
+                  />
+                  {browseSearch && (
+                    <button onClick={() => setBrowseSearch('')} aria-label="Clear" className="shrink-0">
+                      <X className="h-3.5 w-3.5 text-muted hover:text-fg" />
                     </button>
                   )}
                 </div>
-              )
-            })}
-          </div>
+              </div>
+
+              <div className="max-h-[340px] overflow-y-auto pr-1">
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  {browseList.map((cm) => {
+                    const installed = isInstalled(cm.name)
+                    return (
+                      <div
+                        key={cm.name}
+                        className="flex items-center gap-3 rounded-xl border border-line bg-panel2/40 px-3 py-2.5"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2">
+                            <span className="truncate text-sm font-medium text-fg">{cm.label}</span>
+                            <span className="shrink-0 text-[11px] text-muted">{cm.approxSize}</span>
+                          </div>
+                          <p className="truncate text-xs text-muted">{cm.blurb}</p>
+                        </div>
+                        {installed ? (
+                          <span className="shrink-0 text-xs text-emerald-400">Installed</span>
+                        ) : (
+                          <button
+                            onClick={() => void pull.start(cm.name)}
+                            disabled={pull.pulling}
+                            className="shrink-0 rounded-lg border border-line px-2.5 py-1.5 text-xs text-muted transition hover:border-iris/40 hover:text-fg disabled:opacity-50"
+                          >
+                            Pull
+                          </button>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+                {browseList.length === 0 && (
+                  <p className="px-1 py-4 text-center text-xs text-muted">No catalog models match your search.</p>
+                )}
+              </div>
+            </>
+          ) : (
+            <HuggingFaceBrowser onPull={(name) => void pull.start(name)} pulling={pull.pulling} isInstalled={isInstalled} />
+          )}
         </section>
 
         {/* Installed */}
@@ -209,13 +274,13 @@ export function ModelsPage({
             <div className="flex items-center gap-2 rounded-lg border border-line bg-panel2/60 px-2.5 py-1.5 focus-within:border-iris/40">
               <Search className="h-3.5 w-3.5 shrink-0 text-muted" />
               <input
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
+                value={installedSearch}
+                onChange={(e) => setInstalledSearch(e.target.value)}
                 placeholder="Search installed…"
                 className="w-36 bg-transparent text-sm text-fg outline-none placeholder:text-muted/70"
               />
-              {search && (
-                <button onClick={() => setSearch('')} aria-label="Clear search" className="shrink-0">
+              {installedSearch && (
+                <button onClick={() => setInstalledSearch('')} aria-label="Clear search" className="shrink-0">
                   <X className="h-3.5 w-3.5 text-muted hover:text-fg" />
                 </button>
               )}

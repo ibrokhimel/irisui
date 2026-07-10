@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react'
 import {
   Boxes,
   Download,
+  Loader2,
   MoreHorizontal,
   Pencil,
   Plus,
@@ -34,6 +35,8 @@ export function Sidebar({
   onSearch,
   onNewChat,
   onOpenModels,
+  pullActive,
+  pullPercent,
   onSelectChat,
   onRenameChat,
   onDeleteChat,
@@ -48,6 +51,8 @@ export function Sidebar({
   onSearch: (query: string) => void
   onNewChat: () => void
   onOpenModels: () => void
+  pullActive: boolean
+  pullPercent: number | null
   onSelectChat: (id: string) => void
   onRenameChat: (id: string, title: string) => void
   onDeleteChat: (id: string) => void
@@ -126,6 +131,12 @@ export function Sidebar({
           >
             <Boxes className="h-4 w-4" />
             Models
+            {pullActive && (
+              <span className="ml-auto flex items-center gap-1 text-[11px] font-medium text-iris">
+                <Loader2 className="h-3 w-3 animate-spin" />
+                {pullPercent !== null ? `${pullPercent}%` : ''}
+              </span>
+            )}
           </button>
         </div>
 

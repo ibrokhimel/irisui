@@ -9,16 +9,23 @@ import { SettingsModal } from './components/SettingsModal'
 import { useChat } from './hooks/useChat'
 import { useTheme } from './hooks/useTheme'
 import { useModelPrefs } from './hooks/useModelPrefs'
+import { useModelPull } from './hooks/useModelPull'
 
 export default function App() {
   const chat = useChat()
   const { theme, setPreset, setAccent, reset } = useTheme()
   const { prefs, setDefaultModel, toggleFavorite } = useModelPrefs()
+  const pull = useModelPull(chat.refresh)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [view, setView] = useState<'chat' | 'models'>('chat')
 
   const empty = chat.messages.length === 0
+
+  const pullPercent =
+    pull.progress?.total && pull.progress.total > 0
+      ? Math.min(100, Math.round(((pull.progress.completed ?? 0) / pull.progress.total) * 100))
+      : null
 
   // Favorited models float to the top of the chat model picker.
   const orderedModels = useMemo(() => {
@@ -64,6 +71,8 @@ export default function App() {
         onSearch={chat.setSearch}
         onNewChat={handleNewChat}
         onOpenModels={() => setView('models')}
+        pullActive={pull.pulling}
+        pullPercent={pullPercent}
         onSelectChat={handleSelectChat}
         onRenameChat={chat.renameChat}
         onDeleteChat={chat.deleteChat}
@@ -87,6 +96,7 @@ export default function App() {
             prefs={prefs}
             onSetDefault={setDefaultModel}
             onToggleFavorite={toggleFavorite}
+            pull={pull}
           />
         ) : empty ? (
           <HomeScreen
