@@ -7,7 +7,10 @@ import type { ModelPrefs } from '../lib/modelPrefs'
 import type { ModelCategory } from '../lib/modelCatalog'
 import { MODEL_CATALOG, MODEL_CATEGORIES } from '../lib/modelCatalog'
 import { formatBytes, formatEta, formatSpeed } from '../lib/format'
+import { loadHardwareProfile } from '../lib/hardware'
+import { modelFit } from '../lib/recommend'
 import { ModelRow } from './ModelRow'
+import { HardwarePanel } from './HardwarePanel'
 import { HuggingFaceBrowser } from './HuggingFaceBrowser'
 import { ConfirmDialog } from './ConfirmDialog'
 
@@ -38,6 +41,7 @@ export function ModelsPage({
   const [toDelete, setToDelete] = useState<OllamaModel | null>(null)
   const [deleting, setDeleting] = useState(false)
   const [deleteError, setDeleteError] = useState('')
+  const [ramGb, setRamGb] = useState<number | null>(() => loadHardwareProfile()?.ramGb ?? null)
 
   const installedNames = useMemo(() => new Set(models.map((m) => m.name)), [models])
   const isInstalled = (name: string) => {
@@ -168,6 +172,13 @@ export function ModelsPage({
           {pull.error && <p className="mt-3 text-sm text-rose-300">⚠️ {pull.error}</p>}
           {pull.done && <p className="mt-3 text-sm text-emerald-400">✓ Installed {pull.done}.</p>}
         </section>
+
+        <HardwarePanel
+          onPull={(n) => void pull.start(n)}
+          pulling={pull.pulling}
+          isInstalled={isInstalled}
+          onProfileChange={(p) => setRamGb(p.ramGb)}
+        />
 
         {/* Browse */}
         <section className="mb-6">
@@ -304,6 +315,7 @@ export function ModelsPage({
                   onToggleFavorite={onToggleFavorite}
                   onSetDefault={onSetDefault}
                   onDelete={setToDelete}
+                  fit={ramGb && m.size ? modelFit(m.size, ramGb) : null}
                 />
               ))}
             </div>

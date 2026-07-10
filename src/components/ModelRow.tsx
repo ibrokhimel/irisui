@@ -4,6 +4,7 @@ import type { OllamaModel } from '../types'
 import type { BenchmarkResult, ModelDetails } from '../lib/ollama'
 import { benchmarkModel, showModel } from '../lib/ollama'
 import { estimatedRam, formatBytes, formatDate } from '../lib/format'
+import type { FitVerdict } from '../lib/recommend'
 
 export function ModelRow({
   model,
@@ -12,6 +13,7 @@ export function ModelRow({
   onToggleFavorite,
   onSetDefault,
   onDelete,
+  fit,
 }: {
   model: OllamaModel
   isDefault: boolean
@@ -19,6 +21,7 @@ export function ModelRow({
   onToggleFavorite: (name: string) => void
   onSetDefault: (name: string) => void
   onDelete: (model: OllamaModel) => void
+  fit?: FitVerdict | null
 }) {
   const [expanded, setExpanded] = useState(false)
   const [details, setDetails] = useState<ModelDetails | null>(null)
@@ -100,6 +103,14 @@ export function ModelRow({
             <span title="Rough RAM needed to run this model (approximate, based on size)">
               ≈{estimatedRam(model.size)} RAM
             </span>
+            {fit && (
+              <>
+                <span>·</span>
+                <span className={fit === 'comfortable' ? 'text-emerald-400' : fit === 'tight' ? 'text-amber-400' : 'text-rose-400'}>
+                  {fit === 'comfortable' ? 'Runs well' : fit === 'tight' ? 'Tight fit' : 'Too large'}
+                </span>
+              </>
+            )}
           </div>
         </div>
 
