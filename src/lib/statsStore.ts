@@ -5,14 +5,18 @@ let dbp: Promise<IDBDatabase> | null = null
 const getDB = () => (dbp ??= openDB())
 
 export async function addStat(stat: GenerationStat): Promise<void> {
-  const db = await getDB()
-  await new Promise<void>((resolve, reject) => {
-    const t = db.transaction(STATS, 'readwrite')
-    t.objectStore(STATS).put(stat)
-    t.oncomplete = () => resolve()
-    t.onerror = () => reject(t.error)
-    t.onabort = () => reject(t.error)
-  })
+  try {
+    const db = await getDB()
+    await new Promise<void>((resolve, reject) => {
+      const t = db.transaction(STATS, 'readwrite')
+      t.objectStore(STATS).put(stat)
+      t.oncomplete = () => resolve()
+      t.onerror = () => reject(t.error)
+      t.onabort = () => reject(t.error)
+    })
+  } catch {
+    /* stats are best-effort — never surface storage errors */
+  }
 }
 
 export async function listStats(limit?: number): Promise<GenerationStat[]> {
@@ -27,12 +31,16 @@ export async function listStats(limit?: number): Promise<GenerationStat[]> {
 }
 
 export async function clearStats(): Promise<void> {
-  const db = await getDB()
-  await new Promise<void>((resolve, reject) => {
-    const t = db.transaction(STATS, 'readwrite')
-    t.objectStore(STATS).clear()
-    t.oncomplete = () => resolve()
-    t.onerror = () => reject(t.error)
-    t.onabort = () => reject(t.error)
-  })
+  try {
+    const db = await getDB()
+    await new Promise<void>((resolve, reject) => {
+      const t = db.transaction(STATS, 'readwrite')
+      t.objectStore(STATS).clear()
+      t.oncomplete = () => resolve()
+      t.onerror = () => reject(t.error)
+      t.onabort = () => reject(t.error)
+    })
+  } catch {
+    /* stats are best-effort — never surface storage errors */
+  }
 }
