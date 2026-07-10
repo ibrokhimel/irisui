@@ -3,6 +3,7 @@ import { Check, Copy, RefreshCw } from 'lucide-react'
 import type { ChatMessage } from '../types'
 import { Markdown } from './Markdown'
 import { IrisMark } from './IrisMark'
+import { formatStatLine } from '../lib/stats'
 
 export function Message({
   message,
@@ -50,6 +51,10 @@ export function Message({
       <div className="min-w-0 flex-1 pt-1">
         {message.content && <Markdown content={message.content} />}
         {streaming && <span className="stream-caret align-middle" aria-hidden="true" />}
+
+        {!streaming && message.stat && (
+          <p className="mt-1.5 font-mono text-[11px] text-muted/70">{formatStatLine(message.stat)}</p>
+        )}
 
         {!streaming && message.content && (
           <div className="mt-2 flex items-center gap-1 opacity-0 transition group-hover:opacity-100 focus-within:opacity-100">
