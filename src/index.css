@@ -1,0 +1,251 @@
+@import "tailwindcss";
+
+/* ── IrisUI design tokens ──────────────────────────────────────────────
+   Wine-dark. A warm near-black base, a cool slate mid-tone for structure,
+   and a deep burgundy accent used with restraint. A brighter wine is
+   derived for foreground marks so they stay legible on near-black.
+     base   #080705   slate  #40434E   accent #702632 */
+@theme {
+  --color-bg: #080705;
+  --color-panel: #100e0c;
+  --color-panel2: #1a191d;
+  --color-line: #2c2e37;
+  --color-fg: #ece7e3;
+  --color-muted: #8b8d99;
+  --color-slate: #40434e;
+  --color-iris: #b8404d; /* bright wine — foreground accent */
+  --color-iris-strong: #702632; /* deep burgundy — fills & borders */
+}
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    margin: 0;
+    background-color: var(--color-bg);
+    color: var(--color-fg);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica,
+      Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  /* Signature: a single, quiet ember — burgundy warmed by slate — bleeding
+     down from the top. Fixed so it stays put while the conversation scrolls. */
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 0;
+    background:
+      radial-gradient(60% 42% at 72% -8%, rgba(178, 61, 77, 0.16), transparent 70%),
+      radial-gradient(50% 38% at 12% -6%, rgba(64, 67, 78, 0.16), transparent 72%);
+  }
+
+  #root {
+    position: relative;
+    z-index: 1;
+  }
+
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: #2c2e37 transparent;
+  }
+  *::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  *::-webkit-scrollbar-thumb {
+    background: #2c2e37;
+    border-radius: 9999px;
+    border: 2px solid transparent;
+    background-clip: content-box;
+  }
+  *::-webkit-scrollbar-thumb:hover {
+    background: #3a3d48;
+    background-clip: content-box;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-iris);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+}
+
+/* ── Streaming caret ──────────────────────────────────────────────── */
+@keyframes iris-blink {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0;
+  }
+}
+.stream-caret::after {
+  content: "";
+  display: inline-block;
+  width: 7px;
+  height: 1.05em;
+  margin-left: 2px;
+  transform: translateY(2px);
+  border-radius: 2px;
+  background: var(--color-iris);
+  animation: iris-blink 1s step-end infinite;
+}
+
+/* ── Dark markdown theme ──────────────────────────────────────────────
+   Assistant messages render through this. Code colors come from the
+   highlight.js github-dark theme; here we own spacing + surfaces. */
+.markdown {
+  font-size: 15px;
+  line-height: 1.7;
+  color: var(--color-fg);
+  word-wrap: break-word;
+}
+.markdown > *:first-child {
+  margin-top: 0;
+}
+.markdown > *:last-child {
+  margin-bottom: 0;
+}
+.markdown p {
+  margin: 0 0 12px;
+}
+.markdown h1,
+.markdown h2,
+.markdown h3,
+.markdown h4 {
+  margin: 22px 0 10px;
+  font-weight: 650;
+  line-height: 1.3;
+  letter-spacing: -0.01em;
+}
+.markdown h1 {
+  font-size: 1.5em;
+}
+.markdown h2 {
+  font-size: 1.3em;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--color-line);
+}
+.markdown h3 {
+  font-size: 1.12em;
+}
+.markdown h4 {
+  font-size: 1em;
+}
+.markdown strong {
+  font-weight: 650;
+  color: #fbf7f5;
+}
+.markdown em {
+  font-style: italic;
+}
+.markdown a {
+  color: var(--color-iris);
+  text-decoration: none;
+  border-bottom: 1px solid rgba(184, 64, 77, 0.4);
+}
+.markdown a:hover {
+  border-bottom-color: var(--color-iris);
+}
+.markdown ul,
+.markdown ol {
+  margin: 0 0 12px;
+  padding-left: 1.5em;
+}
+.markdown li {
+  margin: 4px 0;
+}
+.markdown li::marker {
+  color: var(--color-muted);
+}
+.markdown ul {
+  list-style: disc;
+}
+.markdown ol {
+  list-style: decimal;
+}
+.markdown blockquote {
+  margin: 0 0 12px;
+  padding: 2px 14px;
+  border-left: 3px solid var(--color-iris-strong);
+  color: var(--color-muted);
+  background: rgba(178, 61, 77, 0.07);
+  border-radius: 0 8px 8px 0;
+}
+.markdown hr {
+  border: none;
+  border-top: 1px solid var(--color-line);
+  margin: 20px 0;
+}
+
+/* Inline code */
+.markdown :not(pre) > code {
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.86em;
+  padding: 2px 6px;
+  border-radius: 6px;
+  background: rgba(178, 61, 77, 0.14);
+  border: 1px solid rgba(178, 61, 77, 0.2);
+  color: #e6a6ae;
+}
+
+/* Fenced code blocks */
+.markdown pre {
+  margin: 0 0 14px;
+  padding: 14px 16px;
+  border-radius: 12px;
+  border: 1px solid var(--color-line);
+  background: #0e0c0b;
+  overflow-x: auto;
+}
+.markdown pre code {
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 13px;
+  line-height: 1.6;
+  background: transparent;
+  border: 0;
+  padding: 0;
+  color: inherit;
+}
+
+/* Tables */
+.markdown table {
+  width: 100%;
+  margin: 0 0 14px;
+  border-collapse: collapse;
+  font-size: 14px;
+  display: block;
+  overflow-x: auto;
+}
+.markdown th,
+.markdown td {
+  padding: 8px 12px;
+  border: 1px solid var(--color-line);
+  text-align: left;
+}
+.markdown th {
+  background: var(--color-panel2);
+  font-weight: 600;
+}
+.markdown tr:nth-child(even) td {
+  background: rgba(255, 255, 255, 0.02);
+}
+.markdown img {
+  max-width: 100%;
+  border-radius: 10px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .stream-caret::after {
+    animation: none;
+  }
+}
