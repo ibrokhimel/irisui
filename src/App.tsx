@@ -5,6 +5,7 @@ import { HomeScreen } from './components/HomeScreen'
 import { MessageList } from './components/MessageList'
 import { ChatInput } from './components/ChatInput'
 import { ModelsPage } from './components/ModelsPage'
+import { StatsPage } from './components/StatsPage'
 import { SettingsModal } from './components/SettingsModal'
 import { useChat } from './hooks/useChat'
 import { useTheme } from './hooks/useTheme'
@@ -18,7 +19,7 @@ export default function App() {
   const pull = useModelPull(chat.refresh)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(true)
-  const [view, setView] = useState<'chat' | 'models'>('chat')
+  const [view, setView] = useState<'chat' | 'models' | 'stats'>('chat')
 
   const empty = chat.messages.length === 0
 
@@ -71,6 +72,7 @@ export default function App() {
         onSearch={chat.setSearch}
         onNewChat={handleNewChat}
         onOpenModels={() => setView('models')}
+        onOpenStats={() => setView('stats')}
         pullActive={pull.pulling}
         pullPercent={pullPercent}
         onSelectChat={handleSelectChat}
@@ -84,8 +86,8 @@ export default function App() {
         <TopBar
           onToggleSidebar={() => setSidebarOpen((o) => !o)}
           onOpenSettings={() => setSettingsOpen(true)}
-          title={view === 'models' ? 'Models' : chat.title}
-          showTitle={view === 'models' || !empty}
+          title={view === 'models' ? 'Models' : view === 'stats' ? 'Stats' : chat.title}
+          showTitle={view === 'models' || view === 'stats' || !empty}
         />
 
         {view === 'models' ? (
@@ -98,6 +100,8 @@ export default function App() {
             onToggleFavorite={toggleFavorite}
             pull={pull}
           />
+        ) : view === 'stats' ? (
+          <StatsPage />
         ) : empty ? (
           <HomeScreen
             status={chat.status}
