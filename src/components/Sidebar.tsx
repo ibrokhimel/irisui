@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import {
+  Activity,
   Boxes,
   Download,
   Loader2,
@@ -35,6 +36,7 @@ export function Sidebar({
   onSearch,
   onNewChat,
   onOpenModels,
+  onOpenStats,
   pullActive,
   pullPercent,
   onSelectChat,
@@ -44,13 +46,14 @@ export function Sidebar({
   onOpenSettings,
 }: {
   open: boolean
-  view: 'chat' | 'models'
+  view: 'chat' | 'models' | 'stats'
   metas: ConversationMeta[]
   currentId: string
   search: string
   onSearch: (query: string) => void
   onNewChat: () => void
   onOpenModels: () => void
+  onOpenStats: () => void
   pullActive: boolean
   pullPercent: number | null
   onSelectChat: (id: string) => void
@@ -135,6 +138,16 @@ export function Sidebar({
                 {pullPercent !== null ? `${pullPercent}%` : ''}
               </span>
             )}
+          </button>
+          <button
+            onClick={onOpenStats}
+            className={
+              'mt-1 flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm transition ' +
+              (view === 'stats' ? 'bg-panel2 text-fg' : 'text-muted hover:bg-panel2/60 hover:text-fg')
+            }
+          >
+            <Activity className="h-4 w-4" />
+            Stats
           </button>
         </div>
 

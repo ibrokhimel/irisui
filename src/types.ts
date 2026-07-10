@@ -1,9 +1,12 @@
+import type { MessageStat } from './lib/stats'
+
 export type Role = 'user' | 'assistant'
 
 export type ChatMessage = {
   id: string
   role: Role
   content: string
+  stat?: MessageStat
 }
 
 export type OllamaModel = {
