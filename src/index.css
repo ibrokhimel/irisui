@@ -6,16 +6,16 @@
    so the Settings panel recolors the whole UI live. --color-code-bg stays
    fixed (code blocks read as dark in every theme). */
 @theme {
-  --color-bg: #f7f5ef;
-  --color-panel: #efece3;
-  --color-panel2: #fdfcf9;
-  --color-line: #e5e1d6;
-  --color-fg: #2b2a26;
-  --color-muted: #8a8779;
+  --color-bg: #1b1a17;
+  --color-panel: #211f1c;
+  --color-panel2: #292723;
+  --color-line: #37342e;
+  --color-fg: #eceae3;
+  --color-muted: #9c988d;
   --color-iris: #c96442; /* accent — user-adjustable */
   --color-iris-strong: #ad5639; /* accent, darker (hover / fills) */
   --color-on-accent: #ffffff; /* readable text on the accent */
-  --color-code-bg: #1f1d1a;
+  --color-code-bg: #141310;
 }
 
 @layer base {

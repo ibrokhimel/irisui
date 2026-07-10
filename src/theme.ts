@@ -36,12 +36,12 @@ export const PRESETS: Record<ThemePreset, { label: string; scheme: 'light' | 'da
     label: 'Dark',
     scheme: 'dark',
     vars: {
-      '--color-bg': '#1f1e1c',
-      '--color-panel': '#262523',
-      '--color-panel2': '#302f2c',
-      '--color-line': '#3a3833',
-      '--color-fg': '#ece9e2',
-      '--color-muted': '#9b978c',
+      '--color-bg': '#1b1a17',
+      '--color-panel': '#211f1c',
+      '--color-panel2': '#292723',
+      '--color-line': '#37342e',
+      '--color-fg': '#eceae3',
+      '--color-muted': '#9c988d',
     },
   },
   wine: {
@@ -69,7 +69,7 @@ export const ACCENTS: AccentSwatch[] = [
   { name: 'Wine', value: '#b8404d' },
 ]
 
-export const DEFAULT_THEME: ThemeSettings = { preset: 'light', accent: '#c96442' }
+export const DEFAULT_THEME: ThemeSettings = { preset: 'dark', accent: '#c96442' }
 
 const STORAGE_KEY = 'irisui.theme'
 

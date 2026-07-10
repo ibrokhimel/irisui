@@ -1,32 +1,19 @@
 import { useEffect, useRef } from 'react'
-import type { ChatMessage, OllamaStatus } from '../types'
+import type { ChatMessage } from '../types'
 import { Message } from './Message'
-import { EmptyState } from './EmptyState'
 
 export function MessageList({
   messages,
-  status,
   isStreaming,
-  onPickPrompt,
 }: {
   messages: ChatMessage[]
-  status: OllamaStatus
   isStreaming: boolean
-  onPickPrompt: (prompt: string) => void
 }) {
   const bottomRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
   }, [messages, isStreaming])
-
-  if (messages.length === 0) {
-    return (
-      <div className="flex-1 overflow-y-auto">
-        <EmptyState status={status} onPickPrompt={onPickPrompt} />
-      </div>
-    )
-  }
 
   const lastId = messages[messages.length - 1]?.id
 
