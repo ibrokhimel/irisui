@@ -5,6 +5,7 @@ import { fetchModels, isAbortError, streamChat } from '../lib/ollama'
 import { getStore } from '../lib/store'
 import type { Conversation, ConversationMeta } from '../lib/store'
 import { download, slugify, toJSON, toMarkdown } from '../lib/exporters'
+import { loadModelPrefs } from '../lib/modelPrefs'
 
 function newConversation(model: string): Conversation {
   const now = Date.now()
@@ -88,10 +89,13 @@ export function useChat() {
         setStatus('no-models')
       } else {
         setStatus('online')
-        // Give the open chat a valid model if it lacks one.
-        setCurrent((c) =>
-          c.model && list.some((m) => m.name === c.model) ? c : { ...c, model: list[0].name },
-        )
+        // Give the open chat a valid model if it lacks one (prefer the default).
+        setCurrent((c) => {
+          if (c.model && list.some((m) => m.name === c.model)) return c
+          const pref = loadModelPrefs().defaultModel
+          const model = pref && list.some((m) => m.name === pref) ? pref : list[0].name
+          return { ...c, model }
+        })
       }
     } catch {
       setStatus('offline')
@@ -218,7 +222,11 @@ export function useChat() {
   // ── conversation management ──
   const newChat = useCallback(() => {
     abortRef.current?.abort()
-    const model = currentRef.current.model || models[0]?.name || ''
+    const pref = loadModelPrefs().defaultModel
+    const model =
+      pref && models.some((m) => m.name === pref)
+        ? pref
+        : currentRef.current.model || models[0]?.name || ''
     setCurrent(newConversation(model))
     setInput('')
   }, [models])

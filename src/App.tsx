@@ -1,20 +1,40 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Sidebar } from './components/Sidebar'
 import { TopBar } from './components/TopBar'
 import { HomeScreen } from './components/HomeScreen'
 import { MessageList } from './components/MessageList'
 import { ChatInput } from './components/ChatInput'
+import { ModelsPage } from './components/ModelsPage'
 import { SettingsModal } from './components/SettingsModal'
 import { useChat } from './hooks/useChat'
 import { useTheme } from './hooks/useTheme'
+import { useModelPrefs } from './hooks/useModelPrefs'
 
 export default function App() {
   const chat = useChat()
   const { theme, setPreset, setAccent, reset } = useTheme()
+  const { prefs, setDefaultModel, toggleFavorite } = useModelPrefs()
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(true)
+  const [view, setView] = useState<'chat' | 'models'>('chat')
 
   const empty = chat.messages.length === 0
+
+  // Favorited models float to the top of the chat model picker.
+  const orderedModels = useMemo(() => {
+    const fav = (n: string) => (prefs.favorites.includes(n) ? 1 : 0)
+    return [...chat.models].sort((a, b) => fav(b.name) - fav(a.name))
+  }, [chat.models, prefs.favorites])
+
+  const openChat = () => setView('chat')
+  const handleNewChat = () => {
+    chat.newChat()
+    openChat()
+  }
+  const handleSelectChat = (id: string) => {
+    void chat.selectChat(id)
+    openChat()
+  }
 
   const composerProps = {
     input: chat.input,
@@ -28,7 +48,7 @@ export default function App() {
     setEffort: chat.setEffort,
     temperature: chat.temperature,
     setTemperature: chat.setTemperature,
-    models: chat.models,
+    models: orderedModels,
     selectedModel: chat.selectedModel,
     onSelectModel: chat.setSelectedModel,
   }
@@ -37,12 +57,14 @@ export default function App() {
     <div className="flex h-screen w-screen overflow-hidden text-fg">
       <Sidebar
         open={sidebarOpen}
+        view={view}
         metas={chat.metas}
         currentId={chat.id}
         search={chat.search}
         onSearch={chat.setSearch}
-        onNewChat={chat.newChat}
-        onSelectChat={chat.selectChat}
+        onNewChat={handleNewChat}
+        onOpenModels={() => setView('models')}
+        onSelectChat={handleSelectChat}
         onRenameChat={chat.renameChat}
         onDeleteChat={chat.deleteChat}
         onExport={chat.exportChat}
@@ -53,11 +75,20 @@ export default function App() {
         <TopBar
           onToggleSidebar={() => setSidebarOpen((o) => !o)}
           onOpenSettings={() => setSettingsOpen(true)}
-          title={chat.title}
-          showTitle={!empty}
+          title={view === 'models' ? 'Models' : chat.title}
+          showTitle={view === 'models' || !empty}
         />
 
-        {empty ? (
+        {view === 'models' ? (
+          <ModelsPage
+            models={chat.models}
+            status={chat.status}
+            onRefresh={chat.refresh}
+            prefs={prefs}
+            onSetDefault={setDefaultModel}
+            onToggleFavorite={toggleFavorite}
+          />
+        ) : empty ? (
           <HomeScreen
             status={chat.status}
             onPickPrompt={chat.setInput}
