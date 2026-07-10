@@ -6,6 +6,9 @@ import { getStore } from '../lib/store'
 import type { Conversation, ConversationMeta } from '../lib/store'
 import { download, slugify, toJSON, toMarkdown } from '../lib/exporters'
 import { loadModelPrefs } from '../lib/modelPrefs'
+import { computeStat, toMessageStat } from '../lib/stats'
+import type { MessageStat } from '../lib/stats'
+import { addStat } from '../lib/statsStore'
 
 function newConversation(model: string): Conversation {
   const now = Date.now()
@@ -162,18 +165,34 @@ export function useChat() {
 
       let content = ''
       let received = false
+      const t0 = performance.now()
+      let firstTokenAt = 0
+      let messageStat: MessageStat | undefined
       try {
-        await streamChat({
+        const meta = await streamChat({
           model: base.model,
           messages: apiMessages,
           temperature: base.temperature,
           signal: controller.signal,
           onToken: (chunk) => {
+            if (!firstTokenAt) firstTokenAt = performance.now()
             received = true
             content += chunk
             applyContent(content)
           },
         })
+        if (meta.completionTokens > 0) {
+          const stat = computeStat({
+            conversationId: base.id,
+            model: base.model,
+            startedAt: now,
+            ttftMs: firstTokenAt ? firstTokenAt - t0 : 0,
+            totalMs: performance.now() - t0,
+            meta,
+          })
+          messageStat = toMessageStat(stat)
+          void addStat(stat)
+        }
       } catch (err) {
         if (isAbortError(err)) {
           if (!received) content = '_Stopped._'
@@ -184,11 +203,19 @@ export function useChat() {
       } finally {
         setIsStreaming(false)
         abortRef.current = null
+        if (messageStat) {
+          const s = messageStat
+          setCurrent((c) =>
+            c.id === base.id
+              ? { ...c, messages: c.messages.map((m) => (m.id === assistantId ? { ...m, stat: s } : m)) }
+              : c,
+          )
+        }
         void persist({
           ...base,
           title,
           updatedAt: Date.now(),
-          messages: [...history, { id: assistantId, role: 'assistant', content }],
+          messages: [...history, { id: assistantId, role: 'assistant', content, stat: messageStat }],
         })
       }
     },
