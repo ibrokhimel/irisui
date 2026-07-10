@@ -2,24 +2,83 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type { ChatMessage, Effort, OllamaModel, OllamaStatus } from '../types'
 import { DEFAULT_TEMPERATURE, EFFORT_PROMPTS } from '../constants'
 import { fetchModels, isAbortError, streamChat } from '../lib/ollama'
+import { getStore } from '../lib/store'
+import type { Conversation, ConversationMeta } from '../lib/store'
+import { download, slugify, toJSON, toMarkdown } from '../lib/exporters'
 
-/**
- * All chat state lives here as plain React state — no store, no persistence.
- * The component tree stays thin: App wires this hook's values into the UI.
- */
+function newConversation(model: string): Conversation {
+  const now = Date.now()
+  return {
+    id: crypto.randomUUID(),
+    title: 'New chat',
+    createdAt: now,
+    updatedAt: now,
+    model,
+    effort: 'balanced',
+    temperature: DEFAULT_TEMPERATURE,
+    messages: [],
+  }
+}
+
+/** First user message → a short chat title. */
+function deriveTitle(text: string): string {
+  const clean = text.replace(/\s+/g, ' ').trim()
+  return clean.length <= 48 ? clean : `${clean.slice(0, 48).trimEnd()}…`
+}
+
+function errorMessage(detail: string): string {
+  return `⚠️ **Couldn't reach Ollama.** ${detail}\n\nMake sure Ollama is running and the selected model is available, then try again.`
+}
+
+function metaOf(c: Conversation): ConversationMeta {
+  return {
+    id: c.id,
+    title: c.title,
+    createdAt: c.createdAt,
+    updatedAt: c.updatedAt,
+    model: c.model,
+    effort: c.effort,
+    temperature: c.temperature,
+  }
+}
+
 export function useChat() {
-  const [messages, setMessages] = useState<ChatMessage[]>([])
-  const [models, setModels] = useState<OllamaModel[]>([])
-  const [selectedModel, setSelectedModel] = useState('')
+  const store = useRef(getStore()).current
+
+  // Global Ollama state.
   const [status, setStatus] = useState<OllamaStatus>('checking')
+  const [models, setModels] = useState<OllamaModel[]>([])
+
+  // Conversations: the sidebar list + the currently open conversation.
+  const [metas, setMetas] = useState<ConversationMeta[]>([])
+  const [current, setCurrent] = useState<Conversation>(() => newConversation(''))
+
+  // UI.
   const [input, setInput] = useState('')
   const [isStreaming, setIsStreaming] = useState(false)
-  const [effort, setEffort] = useState<Effort>('balanced')
-  const [temperature, setTemperature] = useState(DEFAULT_TEMPERATURE)
+  const [search, setSearch] = useState('')
 
+  const currentRef = useRef(current)
+  useEffect(() => {
+    currentRef.current = current
+  }, [current])
   const abortRef = useRef<AbortController | null>(null)
 
-  /** Probe Ollama and reconcile status + model list. Never throws. */
+  const persist = useCallback(
+    async (conv: Conversation) => {
+      try {
+        await store.put(conv)
+        setMetas((prev) => {
+          const others = prev.filter((m) => m.id !== conv.id)
+          return [metaOf(conv), ...others].sort((a, b) => b.updatedAt - a.updatedAt)
+        })
+      } catch {
+        /* persistence is best-effort — never block the UI */
+      }
+    },
+    [store],
+  )
+
   const refresh = useCallback(async () => {
     setStatus('checking')
     try {
@@ -27,104 +86,243 @@ export function useChat() {
       setModels(list)
       if (list.length === 0) {
         setStatus('no-models')
-        setSelectedModel('')
       } else {
         setStatus('online')
-        setSelectedModel((prev) =>
-          prev && list.some((m) => m.name === prev) ? prev : list[0].name,
+        // Give the open chat a valid model if it lacks one.
+        setCurrent((c) =>
+          c.model && list.some((m) => m.name === c.model) ? c : { ...c, model: list[0].name },
         )
       }
     } catch {
       setStatus('offline')
       setModels([])
-      setSelectedModel('')
     }
   }, [])
 
+  // Load history + probe Ollama once on mount.
   useEffect(() => {
+    void (async () => {
+      try {
+        setMetas(await store.listMeta())
+      } catch {
+        /* ignore */
+      }
+    })()
     void refresh()
-  }, [refresh])
+  }, [store, refresh])
 
-  const stop = useCallback(() => {
-    abortRef.current?.abort()
-  }, [])
+  const stop = useCallback(() => abortRef.current?.abort(), [])
+
+  /** Stream an assistant reply for `history` within conversation `base`. */
+  const run = useCallback(
+    async (base: Conversation, history: ChatMessage[], title: string) => {
+      const assistantId = crypto.randomUUID()
+      const now = Date.now()
+
+      setCurrent({
+        ...base,
+        title,
+        updatedAt: now,
+        messages: [...history, { id: assistantId, role: 'assistant', content: '' }],
+      })
+      setIsStreaming(true)
+      // Persist the user turn immediately (survives a mid-stream crash / close).
+      void persist({ ...base, title, updatedAt: now, messages: history })
+
+      const controller = new AbortController()
+      abortRef.current = controller
+      const apiMessages = [
+        { role: 'system', content: EFFORT_PROMPTS[base.effort] },
+        ...history.map((m) => ({ role: m.role, content: m.content })),
+      ]
+
+      // Only mutate the visible conversation if the user hasn't switched away.
+      const applyContent = (content: string) =>
+        setCurrent((c) =>
+          c.id === base.id
+            ? { ...c, messages: c.messages.map((m) => (m.id === assistantId ? { ...m, content } : m)) }
+            : c,
+        )
+
+      let content = ''
+      let received = false
+      try {
+        await streamChat({
+          model: base.model,
+          messages: apiMessages,
+          temperature: base.temperature,
+          signal: controller.signal,
+          onToken: (chunk) => {
+            received = true
+            content += chunk
+            applyContent(content)
+          },
+        })
+      } catch (err) {
+        if (isAbortError(err)) {
+          if (!received) content = '_Stopped._'
+        } else {
+          content = errorMessage(err instanceof Error ? err.message : 'Unknown error')
+        }
+        applyContent(content)
+      } finally {
+        setIsStreaming(false)
+        abortRef.current = null
+        void persist({
+          ...base,
+          title,
+          updatedAt: Date.now(),
+          messages: [...history, { id: assistantId, role: 'assistant', content }],
+        })
+      }
+    },
+    [persist],
+  )
 
   const send = useCallback(async () => {
     const text = input.trim()
-    if (!text || isStreaming || status !== 'online' || !selectedModel) return
-
+    const base = currentRef.current
+    if (!text || isStreaming || status !== 'online' || !base.model) return
     const userMsg: ChatMessage = { id: crypto.randomUUID(), role: 'user', content: text }
-    const assistantId = crypto.randomUUID()
-    const history = [...messages, userMsg]
-
-    setMessages([...history, { id: assistantId, role: 'assistant', content: '' }])
+    const history = [...base.messages, userMsg]
+    const title = base.messages.length === 0 ? deriveTitle(text) : base.title
     setInput('')
-    setIsStreaming(true)
+    await run(base, history, title)
+  }, [input, isStreaming, status, run])
 
-    const controller = new AbortController()
-    abortRef.current = controller
+  const regenerate = useCallback(async () => {
+    const base = currentRef.current
+    if (isStreaming || status !== 'online' || !base.model) return
+    const history = [...base.messages]
+    while (history.length && history[history.length - 1].role === 'assistant') history.pop()
+    if (history.length === 0) return
+    await run(base, history, base.title)
+  }, [isStreaming, status, run])
 
-    const apiMessages = [
-      { role: 'system', content: EFFORT_PROMPTS[effort] },
-      ...history.map((m) => ({ role: m.role, content: m.content })),
-    ]
+  // ── per-chat settings (persist only once the chat has content) ──
+  const patchCurrent = useCallback(
+    (patch: Partial<Conversation>) => {
+      const next = { ...currentRef.current, ...patch }
+      setCurrent(next)
+      if (next.messages.length > 0) void persist(next)
+    },
+    [persist],
+  )
+  const setSelectedModel = useCallback((model: string) => patchCurrent({ model }), [patchCurrent])
+  const setEffort = useCallback((effort: Effort) => patchCurrent({ effort }), [patchCurrent])
+  const setTemperature = useCallback(
+    (temperature: number) => patchCurrent({ temperature }),
+    [patchCurrent],
+  )
 
-    const appendToAssistant = (chunk: string) =>
-      setMessages((prev) =>
-        prev.map((m) => (m.id === assistantId ? { ...m, content: m.content + chunk } : m)),
-      )
-    const replaceAssistant = (content: string) =>
-      setMessages((prev) => prev.map((m) => (m.id === assistantId ? { ...m, content } : m)))
-
-    let received = false
-    try {
-      await streamChat({
-        model: selectedModel,
-        messages: apiMessages,
-        temperature,
-        signal: controller.signal,
-        onToken: (chunk) => {
-          received = true
-          appendToAssistant(chunk)
-        },
-      })
-    } catch (err) {
-      if (isAbortError(err)) {
-        if (!received) replaceAssistant('_Stopped._')
-      } else {
-        const detail = err instanceof Error ? err.message : 'Unknown error'
-        replaceAssistant(
-          `⚠️ **Couldn't reach Ollama.** ${detail}\n\nMake sure Ollama is running and the selected model is available, then try again.`,
-        )
-      }
-    } finally {
-      setIsStreaming(false)
-      abortRef.current = null
-    }
-  }, [input, isStreaming, status, selectedModel, messages, effort, temperature])
-
-  /** Stop any active stream, then wipe the transcript. Keeps model + controls. */
-  const clearChat = useCallback(() => {
+  // ── conversation management ──
+  const newChat = useCallback(() => {
     abortRef.current?.abort()
-    setMessages([])
-  }, [])
+    const model = currentRef.current.model || models[0]?.name || ''
+    setCurrent(newConversation(model))
+    setInput('')
+  }, [models])
+
+  const selectChat = useCallback(
+    async (id: string) => {
+      if (id === currentRef.current.id) return
+      abortRef.current?.abort()
+      try {
+        const conv = await store.get(id)
+        if (!conv) return
+        const model = models.some((m) => m.name === conv.model)
+          ? conv.model
+          : models[0]?.name || conv.model
+        setCurrent({ ...conv, model })
+        setInput('')
+      } catch {
+        /* ignore */
+      }
+    },
+    [store, models],
+  )
+
+  const deleteChat = useCallback(
+    async (id: string) => {
+      try {
+        await store.remove(id)
+      } catch {
+        /* ignore */
+      }
+      setMetas((prev) => prev.filter((m) => m.id !== id))
+      if (currentRef.current.id === id) {
+        setCurrent(newConversation(currentRef.current.model || models[0]?.name || ''))
+        setInput('')
+      }
+    },
+    [store, models],
+  )
+
+  const renameChat = useCallback(
+    async (id: string, rawTitle: string) => {
+      const title = rawTitle.trim() || 'Untitled'
+      setMetas((prev) => prev.map((m) => (m.id === id ? { ...m, title } : m)))
+      if (currentRef.current.id === id) setCurrent((c) => ({ ...c, title }))
+      try {
+        const conv =
+          currentRef.current.id === id ? { ...currentRef.current, title } : await store.get(id)
+        if (conv) await store.put({ ...conv, title })
+      } catch {
+        /* ignore */
+      }
+    },
+    [store],
+  )
+
+  const exportChat = useCallback(
+    async (id: string, format: 'md' | 'json') => {
+      try {
+        const conv = currentRef.current.id === id ? currentRef.current : await store.get(id)
+        if (!conv) return
+        if (format === 'md') {
+          download(`${slugify(conv.title)}.md`, toMarkdown(conv), 'text/markdown;charset=utf-8')
+        } else {
+          download(`${slugify(conv.title)}.json`, toJSON(conv), 'application/json')
+        }
+      } catch {
+        /* ignore */
+      }
+    },
+    [store],
+  )
 
   return {
-    messages,
-    models,
-    selectedModel,
+    // Ollama
     status,
+    models,
+    refresh,
+    // current conversation
+    id: current.id,
+    title: current.title,
+    messages: current.messages,
+    selectedModel: current.model,
+    effort: current.effort,
+    temperature: current.temperature,
+    // history
+    metas,
+    search,
+    setSearch,
+    // ui
     input,
-    isStreaming,
-    effort,
-    temperature,
     setInput,
+    isStreaming,
+    // per-chat setters
     setSelectedModel,
     setEffort,
     setTemperature,
+    // actions
     send,
     stop,
-    clearChat,
-    refresh,
+    regenerate,
+    newChat,
+    selectChat,
+    renameChat,
+    deleteChat,
+    exportChat,
   }
 }

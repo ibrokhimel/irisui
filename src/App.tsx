@@ -12,7 +12,7 @@ export default function App() {
   const chat = useChat()
   const { theme, setPreset, setAccent, reset } = useTheme()
   const [settingsOpen, setSettingsOpen] = useState(false)
-  const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [sidebarOpen, setSidebarOpen] = useState(true)
 
   const empty = chat.messages.length === 0
 
@@ -37,16 +37,24 @@ export default function App() {
     <div className="flex h-screen w-screen overflow-hidden text-fg">
       <Sidebar
         open={sidebarOpen}
-        onNewChat={chat.clearChat}
+        metas={chat.metas}
+        currentId={chat.id}
+        search={chat.search}
+        onSearch={chat.setSearch}
+        onNewChat={chat.newChat}
+        onSelectChat={chat.selectChat}
+        onRenameChat={chat.renameChat}
+        onDeleteChat={chat.deleteChat}
+        onExport={chat.exportChat}
         onOpenSettings={() => setSettingsOpen(true)}
       />
 
       <main className="flex min-w-0 flex-1 flex-col">
         <TopBar
           onToggleSidebar={() => setSidebarOpen((o) => !o)}
-          hasMessages={!empty}
-          onClear={chat.clearChat}
           onOpenSettings={() => setSettingsOpen(true)}
+          title={chat.title}
+          showTitle={!empty}
         />
 
         {empty ? (
@@ -57,7 +65,11 @@ export default function App() {
           />
         ) : (
           <>
-            <MessageList messages={chat.messages} isStreaming={chat.isStreaming} />
+            <MessageList
+              messages={chat.messages}
+              isStreaming={chat.isStreaming}
+              onRegenerate={chat.regenerate}
+            />
             <ChatInput variant="docked" {...composerProps} />
           </>
         )}
