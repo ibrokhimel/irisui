@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
 import { Code2, FileText, GraduationCap, Pencil, Sparkles, Terminal, WifiOff } from 'lucide-react'
 import type { OllamaStatus } from '../types'
-import { Spark } from './Spark'
+import { IrisMark } from './IrisMark'
 
 const CHIPS = [
   { label: 'Write', icon: Pencil, prompt: 'Help me write ' },
@@ -30,7 +30,7 @@ export function HomeScreen({
   return (
     <div className="flex flex-1 flex-col items-center justify-center overflow-y-auto px-4 pb-16">
       <div className="mb-8 flex items-center justify-center gap-3.5">
-        <Spark className="h-8 w-8 text-iris" />
+        <IrisMark className="h-9 w-9 text-iris" />
         <h1 className="font-serif text-[34px] font-normal tracking-tight text-fg">{greeting()}</h1>
       </div>
 
