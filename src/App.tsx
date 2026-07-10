@@ -1,15 +1,20 @@
+import { useState } from 'react'
 import { Sidebar } from './components/Sidebar'
 import { ChatHeader } from './components/ChatHeader'
 import { MessageList } from './components/MessageList'
 import { ChatInput } from './components/ChatInput'
+import { SettingsModal } from './components/SettingsModal'
 import { useChat } from './hooks/useChat'
+import { useTheme } from './hooks/useTheme'
 
 export default function App() {
   const chat = useChat()
+  const { theme, setPreset, setAccent, reset } = useTheme()
+  const [settingsOpen, setSettingsOpen] = useState(false)
 
   return (
     <div className="flex h-screen w-screen overflow-hidden text-fg">
-      <Sidebar onNewChat={chat.clearChat} />
+      <Sidebar onNewChat={chat.clearChat} onOpenSettings={() => setSettingsOpen(true)} />
 
       <main className="flex min-w-0 flex-1 flex-col">
         <ChatHeader
@@ -44,6 +49,15 @@ export default function App() {
           setTemperature={chat.setTemperature}
         />
       </main>
+
+      <SettingsModal
+        open={settingsOpen}
+        theme={theme}
+        onClose={() => setSettingsOpen(false)}
+        onSelectPreset={setPreset}
+        onSelectAccent={setAccent}
+        onReset={reset}
+      />
     </div>
   )
 }

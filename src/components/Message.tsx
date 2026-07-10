@@ -24,7 +24,7 @@ export function Message({
       <div
         className={
           'mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border bg-panel2 ' +
-          (streaming ? 'border-iris/60 shadow-[0_0_0_3px_rgba(178,61,77,0.14)]' : 'border-line')
+          (streaming ? 'border-iris ring-2 ring-iris/20' : 'border-line')
         }
       >
         <Aperture className="h-[18px] w-[18px] text-iris" />

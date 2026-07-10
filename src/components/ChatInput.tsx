@@ -59,7 +59,7 @@ export function ChatInput({
   return (
     <div className="border-t border-line bg-panel/40 px-4 py-4 backdrop-blur-sm">
       <div className="mx-auto w-full max-w-3xl">
-        <div className="rounded-2xl border border-line bg-panel2/80 shadow-[0_0_30px_-12px_rgba(112,38,50,0.55)] transition focus-within:border-iris/50">
+        <div className="rounded-2xl border border-line bg-panel2 shadow-[0_2px_16px_-10px_rgba(0,0,0,0.35)] transition focus-within:border-iris/60">
           <textarea
             ref={textareaRef}
             value={input}
@@ -101,7 +101,7 @@ export function ChatInput({
                 value={temperature}
                 onChange={(e) => setTemperature(Number(e.target.value))}
                 aria-label="Temperature"
-                className="h-1 w-20 cursor-pointer accent-[#b8404d]"
+                className="h-1 w-20 cursor-pointer accent-[var(--color-iris)]"
               />
               <span className="w-7 text-right font-mono text-xs text-fg">{temperature.toFixed(1)}</span>
             </div>
@@ -120,7 +120,7 @@ export function ChatInput({
                 <button
                   onClick={onSend}
                   disabled={sendDisabled}
-                  className="flex items-center gap-1.5 rounded-lg bg-gradient-to-br from-[#8f2f3d] to-[#702632] px-3.5 py-2 text-sm font-semibold text-white shadow-sm transition hover:from-[#a5384a] hover:to-[#8a2f3b] disabled:cursor-not-allowed disabled:from-panel disabled:to-panel disabled:text-muted disabled:shadow-none"
+                  className="btn-primary flex items-center gap-1.5 rounded-lg px-3.5 py-2 text-sm font-semibold shadow-sm transition"
                 >
                   <Send className="h-4 w-4" />
                   Send

@@ -15,14 +15,17 @@ export function EmptyState({
       <div className="relative mb-6">
         <div
           className="absolute inset-0 -z-10 blur-2xl"
-          style={{ background: 'radial-gradient(circle, rgba(178,61,77,0.32), transparent 70%)' }}
+          style={{
+            background:
+              'radial-gradient(circle, color-mix(in srgb, var(--color-iris) 32%, transparent), transparent 70%)',
+          }}
         />
         <div className="flex h-16 w-16 items-center justify-center rounded-2xl border border-line bg-panel2">
           <Aperture className="h-8 w-8 text-iris" />
         </div>
       </div>
 
-      <h1 className="bg-gradient-to-r from-[#e0959d] via-[#c25767] to-[#8f2f3d] bg-clip-text text-3xl font-semibold tracking-tight text-transparent">
+      <h1 className="bg-gradient-to-r from-[var(--color-iris)] to-[var(--color-iris-strong)] bg-clip-text text-3xl font-semibold tracking-tight text-transparent">
         IrisUI
       </h1>
       <p className="mt-2 text-[15px] text-muted">Chat with your local Ollama models.</p>
@@ -88,7 +91,7 @@ function Notice({
 
 function CodeLine({ children }: { children: ReactNode }) {
   return (
-    <code className="mt-2 block w-full rounded-lg border border-line bg-[#0e0c0b] px-3 py-2 font-mono text-[13px] text-iris">
+    <code className="mt-2 block w-full rounded-lg border border-line bg-[var(--color-code-bg)] px-3 py-2 font-mono text-[13px] text-[#e6a99a]">
       {children}
     </code>
   )

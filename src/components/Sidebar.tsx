@@ -1,6 +1,12 @@
 import { Aperture, Plus, MessageSquare, Settings } from 'lucide-react'
 
-export function Sidebar({ onNewChat }: { onNewChat: () => void }) {
+export function Sidebar({
+  onNewChat,
+  onOpenSettings,
+}: {
+  onNewChat: () => void
+  onOpenSettings: () => void
+}) {
   return (
     <aside className="hidden w-64 shrink-0 flex-col border-r border-line bg-panel/70 backdrop-blur-sm md:flex">
       {/* Brand */}
@@ -8,7 +14,7 @@ export function Sidebar({ onNewChat }: { onNewChat: () => void }) {
         <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-line bg-panel2">
           <Aperture className="h-[18px] w-[18px] text-iris" />
         </div>
-        <span className="bg-gradient-to-r from-[#e0959d] via-[#c25767] to-[#8f2f3d] bg-clip-text text-[17px] font-semibold tracking-tight text-transparent">
+        <span className="bg-gradient-to-r from-[var(--color-iris)] to-[var(--color-iris-strong)] bg-clip-text text-[17px] font-semibold tracking-tight text-transparent">
           IrisUI
         </span>
       </div>
@@ -37,12 +43,11 @@ export function Sidebar({ onNewChat }: { onNewChat: () => void }) {
       {/* Footer / settings placeholder */}
       <div className="border-t border-line px-3 py-3">
         <button
-          disabled
-          className="flex w-full cursor-not-allowed items-center gap-2 rounded-lg px-2 py-2 text-sm text-muted/80"
+          onClick={onOpenSettings}
+          className="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-sm text-muted transition hover:bg-panel2 hover:text-fg"
         >
           <Settings className="h-4 w-4" />
           Settings
-          <span className="ml-auto text-[10px] uppercase tracking-wide text-muted/50">soon</span>
         </button>
       </div>
     </aside>
