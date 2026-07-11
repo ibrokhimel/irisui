@@ -1,27 +1,35 @@
-import type { ChatStreamResult } from './ollama'
+import { computeCostUsd } from './providers/cost'
+import type { ModelPricing } from './providers/pricing'
+import { parseModelRef, type ProviderId } from './providers/modelRef'
+import type { ChatUsage } from './providers/types'
 
 export interface GenerationStat {
-  id: string               // crypto.randomUUID()
+  id: string
   conversationId: string
-  model: string
-  startedAt: number        // epoch ms
-  ttftMs: number           // client-measured first-token latency
-  totalMs: number          // client-measured wall time
+  model: string             // qualified ref, e.g. 'openai:gpt-4o-mini'
+  providerId?: ProviderId   // absent on stats persisted before multi-provider
+  startedAt: number
+  ttftMs: number
+  totalMs: number
   promptTokens: number
   completionTokens: number
-  tokensPerSec: number     // eval_count / (eval_duration/1e9); wall-time fallback
-  loadMs: number           // load_duration / 1e6
+  tokensPerSec: number
+  loadMs: number
+  /** Absent when the model has no known price. NEVER 0 as a stand-in. */
+  costUsd?: number
 }
 
 export interface MessageStat {
   model: string
+  providerId?: ProviderId
   tokensPerSec: number
   ttftMs: number
   totalMs: number
   completionTokens: number
-  /** Absent on messages persisted before context-window tracking shipped —
-   *  consumers must tolerate it being undefined and omit that segment. */
+  /** Absent on messages persisted before context-window tracking shipped. */
   promptTokens?: number
+  /** Absent when the model has no known price. */
+  costUsd?: number
 }
 
 export interface ModelSummary {
@@ -32,35 +40,44 @@ export interface ModelSummary {
 }
 
 export function computeStat(input: {
-  conversationId: string; model: string; startedAt: number
-  ttftMs: number; totalMs: number; meta: ChatStreamResult
+  conversationId: string
+  model: string
+  startedAt: number
+  usage: ChatUsage
+  pricing?: ModelPricing
 }): GenerationStat {
-  const { meta } = input
-  const evalSec = meta.evalDurationNs / 1e9
-  const wallSec = input.totalMs / 1000
+  const { usage } = input
+  // Ollama reports its own eval duration; cloud providers report none, so they
+  // fall through to wall-clock — the same fallback this function has always had.
+  const evalSec = (usage.serverEvalNs ?? 0) / 1e9
+  const wallSec = usage.totalMs / 1000
   const tokensPerSec =
-    evalSec > 0 ? meta.completionTokens / evalSec
-    : wallSec > 0 ? meta.completionTokens / wallSec
+    evalSec > 0 ? usage.completionTokens / evalSec
+    : wallSec > 0 ? usage.completionTokens / wallSec
     : 0
+
   return {
     id: crypto.randomUUID(),
     conversationId: input.conversationId,
     model: input.model,
+    providerId: parseModelRef(input.model).providerId,
     startedAt: input.startedAt,
-    ttftMs: Math.round(input.ttftMs),
-    totalMs: Math.round(input.totalMs),
-    promptTokens: meta.promptTokens,
-    completionTokens: meta.completionTokens,
+    ttftMs: Math.round(usage.ttftMs),
+    totalMs: Math.round(usage.totalMs),
+    promptTokens: usage.promptTokens,
+    completionTokens: usage.completionTokens,
     tokensPerSec,
-    loadMs: Math.round(meta.loadDurationNs / 1e6),
+    loadMs: Math.round((usage.loadDurationNs ?? 0) / 1e6),
+    costUsd: computeCostUsd(usage, input.pricing),
   }
 }
 
 export function toMessageStat(stat: GenerationStat): MessageStat {
   return {
-    model: stat.model, tokensPerSec: stat.tokensPerSec,
+    model: stat.model, providerId: stat.providerId,
+    tokensPerSec: stat.tokensPerSec,
     ttftMs: stat.ttftMs, totalMs: stat.totalMs, completionTokens: stat.completionTokens,
-    promptTokens: stat.promptTokens,
+    promptTokens: stat.promptTokens, costUsd: stat.costUsd,
   }
 }
 
@@ -88,9 +105,17 @@ export function summarizeByModel(stats: GenerationStat[]): ModelSummary[] {
 }
 
 export function formatStatLine(stat: MessageStat): string {
-  const base = `${stat.model} · ${stat.tokensPerSec.toFixed(1)} tok/s · first token ${stat.ttftMs}ms · total ${(stat.totalMs / 1000).toFixed(1)}s`
-  // promptTokens is absent on messages persisted before this field existed —
-  // omit the in/out segment rather than guessing at a value.
-  if (stat.promptTokens === undefined) return base
-  return `${base} · ↑${stat.promptTokens.toLocaleString()} in · ↓${stat.completionTokens.toLocaleString()} out`
+  // Display the bare model id: 'openai:gpt-4o-mini' reads as 'gpt-4o-mini'.
+  // A legacy unprefixed ref parses back to itself, so old messages are unchanged.
+  const { id } = parseModelRef(stat.model)
+  let line = `${id} · ${stat.tokensPerSec.toFixed(1)} tok/s · first token ${stat.ttftMs}ms · total ${(stat.totalMs / 1000).toFixed(1)}s`
+  if (stat.promptTokens !== undefined) {
+    line += ` · ↑${stat.promptTokens.toLocaleString()} in · ↓${stat.completionTokens.toLocaleString()} out`
+  }
+  // "≈" because output pricing means the true cost is only knowable after the
+  // fact, and an unpriced model shows nothing rather than a fabricated $0.00.
+  if (stat.costUsd !== undefined) {
+    line += ` · ≈ $${stat.costUsd.toFixed(4)}`
+  }
+  return line
 }
