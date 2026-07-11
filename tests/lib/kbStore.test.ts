@@ -63,6 +63,15 @@ describe('kbStore', () => {
     expect(withVector?.vector).toEqual([0, 1, 2])
   })
 
+  it('addChunks rejects for an unknown kbId and persists no orphaned chunks', async () => {
+    const bogusId = 'does-not-exist'
+    await expect(
+      addChunks(bogusId, 'a.txt', [mkChunk(bogusId, 0), mkChunk(bogusId, 1)]),
+    ).rejects.toThrow('Unknown knowledge base')
+
+    expect(await getChunks(bogusId)).toEqual([])
+  })
+
   it('getChunks only returns chunks belonging to the given kbId', async () => {
     const kb1 = await createKb('KB1', 'all-minilm')
     const kb2 = await createKb('KB2', 'all-minilm')

@@ -70,4 +70,30 @@ describe('embedTexts', () => {
       'Embedding failed: unexpected response',
     )
   })
+
+  it('throws when an embedding value is Infinity (e.g. 1e400 overflow after JSON.parse)', async () => {
+    // JSON.stringify(Infinity) collapses to "null", so this constructs the
+    // raw response body directly: 1e400 is valid JSON number syntax that
+    // overflows to Infinity once parsed. `typeof Infinity === 'number'` is
+    // true, so this only fails once the check uses Number.isFinite.
+    const raw = '{"embeddings":[[1e400,0.2]]}'
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(raw, { status: 200 })))
+    await expect(embedTexts('all-minilm', ['a'])).rejects.toThrow(
+      'Embedding failed: unexpected response',
+    )
+  })
+
+  it('throws when an embedding value is NaN', async () => {
+    // NaN has no JSON literal either; simulate a response whose .json()
+    // resolves to a NaN-containing array (as a defensively-typed mock
+    // would, e.g. a corrupt/synthetic Ollama payload) to cover the same
+    // Number.isFinite branch from the other non-finite direction.
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ embeddings: [[NaN, 0.2]] }),
+    }))
+    await expect(embedTexts('all-minilm', ['a'])).rejects.toThrow(
+      'Embedding failed: unexpected response',
+    )
+  })
 })

@@ -215,7 +215,7 @@ export async function embedTexts(model: string, texts: string[]): Promise<number
       Array.isArray(vec) &&
       vec.length > 0 &&
       vec.length === dim &&
-      vec.every((n) => typeof n === 'number'),
+      vec.every((n) => Number.isFinite(n)),
   )
   if (!valid) throw new Error('Embedding failed: unexpected response')
 

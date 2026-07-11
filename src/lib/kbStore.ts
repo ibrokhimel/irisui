@@ -81,21 +81,25 @@ export async function addChunks(
   chunks: StoredChunk[],
 ): Promise<void> {
   const db = await getDB()
+
+  // Look up the kb first: if it doesn't exist, reject and write nothing —
+  // otherwise a bogus kbId would silently persist orphaned chunks with no
+  // owning kb record (and no fileCount/chunkCount bump to reflect them).
+  const kb = await new Promise<KnowledgeBase | undefined>((resolve, reject) => {
+    const req = db.transaction(KBS, 'readonly').objectStore(KBS).get(kbId)
+    req.onsuccess = () => resolve(req.result as KnowledgeBase | undefined)
+    req.onerror = () => reject(req.error)
+  })
+  if (!kb) throw new Error('Unknown knowledge base')
+
   await new Promise<void>((resolve, reject) => {
     const t = db.transaction([KBS, CHUNKS], 'readwrite')
     const chunkStore = t.objectStore(CHUNKS)
     for (const c of chunks) chunkStore.put({ ...c, fileName })
 
-    const kbStore = t.objectStore(KBS)
-    const getReq = kbStore.get(kbId)
-    getReq.onsuccess = () => {
-      const kb = getReq.result as KnowledgeBase | undefined
-      if (kb) {
-        kb.fileCount += 1
-        kb.chunkCount += chunks.length
-        kbStore.put(kb)
-      }
-    }
+    kb.fileCount += 1
+    kb.chunkCount += chunks.length
+    t.objectStore(KBS).put(kb)
 
     t.oncomplete = () => resolve()
     t.onerror = () => reject(t.error)

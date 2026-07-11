@@ -28,8 +28,12 @@ const MIN_BREAK_FRACTION = 0.3
  * a single-element array.
  */
 export function chunkText(text: string, opts?: { size?: number; overlap?: number }): string[] {
-  const size = opts?.size ?? DEFAULT_SIZE
-  const overlap = opts?.overlap ?? DEFAULT_OVERLAP
+  // Clamp inputs at entry: size must be >= 1 (size <= 0 would never advance
+  // `start`, looping forever), and overlap must be in [0, size - 1] (an
+  // overlap >= size would walk `start` backwards or keep it stuck, dropping
+  // characters between chunks instead of covering them).
+  const size = Math.max(1, Math.floor(opts?.size ?? DEFAULT_SIZE))
+  const overlap = Math.min(Math.max(0, Math.floor(opts?.overlap ?? DEFAULT_OVERLAP)), size - 1)
   const trimmed = text.trim()
   if (!trimmed) return []
   if (trimmed.length <= size) return [trimmed]

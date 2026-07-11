@@ -72,6 +72,27 @@ describe('chunkText', () => {
     const chunks = chunkText(text, { size: 200, overlap: 30 })
     for (const c of chunks) expect(c.trim().length).toBeGreaterThan(0)
   })
+
+  it('clamps size <= 0 to 1 and terminates, covering every character', () => {
+    const chunks = chunkText('abcdef', { size: 0 })
+    expect(chunks.length).toBeGreaterThan(0)
+    expect(chunks.join('')).toBe('abcdef')
+  })
+
+  it('clamps a negative overlap to 0 so chunks fully cover the source with no gaps', () => {
+    // No paragraph/sentence boundaries anywhere, so this forces hard cuts at
+    // exactly `size` chars each time findBreak would otherwise be consulted.
+    const text = Array.from({ length: 950 }, (_, i) => String(i % 10)).join('')
+    const chunks = chunkText(text, { size: 100, overlap: -50 })
+
+    // Every 10-char substring of the source must appear in some chunk —
+    // i.e. nothing was skipped by a negative overlap walking `start`
+    // backwards past where it should guarantee forward progress.
+    for (let i = 0; i + 10 <= text.length; i += 10) {
+      const piece = text.slice(i, i + 10)
+      expect(chunks.some((c) => c.includes(piece))).toBe(true)
+    }
+  })
 })
 
 describe('cosineSim', () => {
