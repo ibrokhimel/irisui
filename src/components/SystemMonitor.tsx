@@ -4,8 +4,18 @@ import { ChevronUp, Clock, HardDrive, RefreshCw, Thermometer } from 'lucide-reac
 import { listStats } from '../lib/statsStore'
 import { useSystemMonitor } from '../hooks/useSystemMonitor'
 import { GIB, formatTimeLeft, vramFit } from '../lib/system'
-import { formatBytes, formatGbFigure } from '../lib/format'
+import { formatGbFigure } from '../lib/format'
 import { Sparkline } from './Sparkline'
+
+/**
+ * GiB-based size figure for this panel, matching the base `nvidia-smi` (MiB)
+ * and `os.totalmem()` use. Unlike `formatBytes` (decimal GB, for registry
+ * sizes elsewhere in the app), this never collapses 0 to an em dash — a
+ * fully-spilled-to-RAM model (`size_vram: 0`) must still render "0 GB".
+ */
+function formatGb(bytes: number): string {
+  return `${formatGbFigure(bytes / GIB)} GB`
+}
 
 function Card({ children, className = '' }: { children: ReactNode; className?: string }) {
   return <div className={'rounded-xl border border-line bg-panel2/40 p-3 ' + className}>{children}</div>
@@ -104,8 +114,8 @@ export function SystemMonitor({
             <p className="mt-2 text-[11px] text-muted">
               {mon.running.length === 0
                 ? 'No models loaded'
-                : `Model fit: ${formatBytes(fit.inVramBytes)} in VRAM${
-                    fit.sharedBytes > 0 ? ` + ${formatBytes(fit.sharedBytes)} shared` : ''
+                : `Model fit: ${formatGb(fit.inVramBytes)} in VRAM${
+                    fit.sharedBytes > 0 ? ` + ${formatGb(fit.sharedBytes)} shared` : ''
                   }`}
             </p>
           </Card>
@@ -172,7 +182,7 @@ export function SystemMonitor({
             <p className="text-xs font-semibold text-fg">Loaded Models</p>
             <p className="text-[11px] text-muted">
               {mon.running.length > 0
-                ? `${mon.running.length} model${mon.running.length === 1 ? '' : 's'} · ${formatBytes(totalLoaded)}`
+                ? `${mon.running.length} model${mon.running.length === 1 ? '' : 's'} · ${formatGb(totalLoaded)}`
                 : mon.ollamaUp ? 'none' : '—'}
             </p>
           </div>
@@ -196,7 +206,7 @@ export function SystemMonitor({
                         </span>
                       )}
                     </p>
-                    <p className="text-[11px] text-muted">{formatBytes(m.size)}</p>
+                    <p className="text-[11px] text-muted">{formatGb(m.size)}</p>
                   </div>
                   <p className="flex shrink-0 items-center gap-1 text-[11px] tabular-nums text-muted">
                     <Clock className="h-3 w-3" aria-hidden />
