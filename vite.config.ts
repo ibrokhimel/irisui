@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs'
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
+import { systemStatsPlugin } from './scripts/systemStatsPlugin'
 
 const pkg = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf-8')) as {
   version: string
@@ -14,7 +15,7 @@ const pkg = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 
 // CORS, so the app works regardless of how the user's Ollama is configured.
 // See src/lib/ollama.ts for how the base URL is chosen.
 export default defineConfig({
-  plugins: [react(), tailwindcss()],
+  plugins: [react(), tailwindcss(), systemStatsPlugin()],
   define: {
     __APP_VERSION__: JSON.stringify(pkg.version),
   },
