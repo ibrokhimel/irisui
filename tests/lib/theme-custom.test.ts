@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   DEFAULT_THEME, PRESETS, customToVars, loadTheme, saveTheme, seedCustomFromPreset,
 } from '../../src/theme'
+import type { CustomThemeVars } from '../../src/theme'
 
 afterEach(() => vi.unstubAllGlobals())
 
@@ -43,6 +44,30 @@ describe('customToVars', () => {
 
   it('normalizes 3-digit hex', () => {
     expect(customToVars({ bg: '#FFF' }).vars['--color-bg']).toBe('#ffffff')
+  })
+
+  it('does not throw on non-string tokens and falls back per-var, while honoring other valid tokens', () => {
+    // Regression: `value && isValidHex(value)` only short-circuits on falsy
+    // values, so a truthy non-string (e.g. a number) reached `hex.trim()`
+    // inside isValidHex and threw. Each bad token must fall back
+    // independently instead of blowing up the whole call.
+    const badCustom = {
+      bg: 42, panel: null, fg: '', line: '#fff',
+    } as unknown as Partial<CustomThemeVars>
+    expect(() => customToVars(badCustom)).not.toThrow()
+    const { vars } = customToVars(badCustom)
+    expect(vars['--color-bg']).toBe(PRESETS.dark.vars['--color-bg'])
+    expect(vars['--color-panel']).toBe(PRESETS.dark.vars['--color-panel'])
+    expect(vars['--color-fg']).toBe(PRESETS.dark.vars['--color-fg'])
+    // valid 3-digit hex among the bad tokens is still honored (normalized)
+    expect(vars['--color-line']).toBe('#ffffff')
+  })
+
+  it('the exact reviewer repro no longer throws and honors the valid sibling token', () => {
+    expect(() => customToVars({ bg: '#101020', fg: 42 as unknown as string })).not.toThrow()
+    const { vars } = customToVars({ bg: '#101020', fg: 42 as unknown as string })
+    expect(vars['--color-bg']).toBe('#101020')
+    expect(vars['--color-fg']).toBe(PRESETS.dark.vars['--color-fg'])
   })
 })
 

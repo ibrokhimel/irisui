@@ -111,7 +111,7 @@ export function customToVars(
   const vars: Vars = {}
   for (const [key, cssVar] of CUSTOM_TOKEN_MAP) {
     const value = custom?.[key]
-    vars[cssVar] = value && isValidHex(value) ? normalizeHex(value) : fallback[cssVar]
+    vars[cssVar] = typeof value === 'string' && isValidHex(value) ? normalizeHex(value) : fallback[cssVar]
   }
   return { vars, scheme: luminance(vars['--color-bg']) > 0.5 ? 'light' : 'dark' }
 }
