@@ -7,6 +7,20 @@ import { CHUNKS, KBS, PERSONAS, PROMPTS, STATS, clearAllStores, getAll, openDB, 
 import { STORAGE_KEY as THEME_KEY } from '../theme'
 import { KEY as MODEL_PREFS_KEY } from './modelPrefs'
 import { KEY as SETTINGS_KEY } from './appSettings'
+import { KEY as HARDWARE_KEY } from './hardware'
+import type { Effort } from '../types'
+
+/**
+ * Set to `true` as the first statement of `deleteAllData`. Guards against the
+ * "delete-all resurrection" race: an in-flight chat stream's trailing
+ * `persist()` (useChat's `run` finally block) or a stray `addStat()` can
+ * still be pending when the user wipes data, and could re-write a
+ * conversation/stat into IndexedDB after `clearAllStores()` has run but
+ * before `location.reload()` actually reloads the page. Once set, callers
+ * that check `isDataWiped()` at the top of their write path no-op instead.
+ */
+let dataWiped = false
+export const isDataWiped = (): boolean => dataWiped
 
 /**
  * Full local backup/restore: everything IrisUI persists (conversations via
@@ -17,8 +31,8 @@ import { KEY as SETTINGS_KEY } from './appSettings'
 
 export const BACKUP_VERSION = 1
 
-/** localStorage keys folded into the backup (theme, model prefs, app settings). */
-const BACKUP_LOCAL_STORAGE_KEYS = [THEME_KEY, MODEL_PREFS_KEY, SETTINGS_KEY]
+/** localStorage keys folded into the backup (theme, model prefs, app settings, hardware profile). */
+const BACKUP_LOCAL_STORAGE_KEYS = [THEME_KEY, MODEL_PREFS_KEY, SETTINGS_KEY, HARDWARE_KEY]
 
 /** Prefix swept on "Delete all data" — broader than the backed-up key list on purpose. */
 const APP_KEY_PREFIX = 'irisui.'
@@ -95,15 +109,139 @@ function assertArray(v: unknown, field: string): asserts v is unknown[] {
   if (!Array.isArray(v)) throw new Error(`Invalid backup file: "${field}" must be an array`)
 }
 
-function assertRecordsWithId(items: unknown[], field: string): void {
-  for (const item of items) {
-    if (!isRecord(item) || typeof item.id !== 'string' || item.id.length === 0) {
-      throw new Error(`Invalid backup file: malformed entry in "${field}"`)
-    }
+const EFFORTS: Effort[] = ['fast', 'balanced', 'deep', 'ultrathink']
+
+function isEffort(v: unknown): v is Effort {
+  return typeof v === 'string' && (EFFORTS as string[]).includes(v)
+}
+
+function isFiniteNumber(v: unknown): v is number {
+  return typeof v === 'number' && Number.isFinite(v)
+}
+
+function isNonEmptyString(v: unknown): v is string {
+  return typeof v === 'string' && v.length > 0
+}
+
+/** Deep-validates every message: string id, role 'user'|'assistant', string content. */
+function assertMessage(m: unknown): void {
+  if (
+    !isRecord(m) ||
+    !isNonEmptyString(m.id) ||
+    (m.role !== 'user' && m.role !== 'assistant') ||
+    typeof m.content !== 'string'
+  ) {
+    throw new Error('Invalid backup file: malformed message entry')
   }
 }
 
-/** Validate an unknown value shape before touching any store. Throws on garbage input. */
+/** Deep-validates one conversation against the `Conversation` shape. */
+function assertConversation(c: unknown): void {
+  if (
+    !isRecord(c) ||
+    !isNonEmptyString(c.id) ||
+    typeof c.title !== 'string' ||
+    typeof c.model !== 'string' ||
+    !isEffort(c.effort) ||
+    !isFiniteNumber(c.temperature) ||
+    !isFiniteNumber(c.createdAt) ||
+    !isFiniteNumber(c.updatedAt) ||
+    !Array.isArray(c.messages) ||
+    (c.kbId !== undefined && typeof c.kbId !== 'string') ||
+    (c.personaId !== undefined && typeof c.personaId !== 'string')
+  ) {
+    throw new Error('Invalid backup file: malformed conversation entry')
+  }
+  for (const m of c.messages) assertMessage(m)
+}
+
+/** Deep-validates one chunk against the `StoredChunk` shape. */
+function assertChunk(c: unknown): void {
+  if (
+    !isRecord(c) ||
+    !isNonEmptyString(c.id) ||
+    typeof c.kbId !== 'string' ||
+    typeof c.fileName !== 'string' ||
+    typeof c.text !== 'string' ||
+    !isFiniteNumber(c.index) ||
+    !Array.isArray(c.vector) ||
+    !c.vector.every(isFiniteNumber)
+  ) {
+    throw new Error('Invalid backup file: malformed chunk entry')
+  }
+}
+
+/** Deep-validates one knowledge base against the `KnowledgeBase` shape. */
+function assertKb(k: unknown): void {
+  if (
+    !isRecord(k) ||
+    !isNonEmptyString(k.id) ||
+    typeof k.name !== 'string' ||
+    !isFiniteNumber(k.createdAt) ||
+    !isFiniteNumber(k.fileCount) ||
+    !isFiniteNumber(k.chunkCount) ||
+    typeof k.embedModel !== 'string'
+  ) {
+    throw new Error('Invalid backup file: malformed kb entry')
+  }
+}
+
+/** Deep-validates one persona against the `Persona` shape. */
+function assertPersona(p: unknown): void {
+  if (
+    !isRecord(p) ||
+    !isNonEmptyString(p.id) ||
+    typeof p.name !== 'string' ||
+    typeof p.icon !== 'string' ||
+    typeof p.systemPrompt !== 'string' ||
+    !isFiniteNumber(p.createdAt) ||
+    (p.defaultModel !== undefined && typeof p.defaultModel !== 'string') ||
+    (p.defaultEffort !== undefined && !isEffort(p.defaultEffort)) ||
+    (p.defaultTemperature !== undefined && !isFiniteNumber(p.defaultTemperature))
+  ) {
+    throw new Error('Invalid backup file: malformed persona entry')
+  }
+}
+
+/** Deep-validates one prompt against the `PromptItem` shape. */
+function assertPrompt(p: unknown): void {
+  if (
+    !isRecord(p) ||
+    !isNonEmptyString(p.id) ||
+    typeof p.title !== 'string' ||
+    typeof p.text !== 'string' ||
+    !isFiniteNumber(p.createdAt)
+  ) {
+    throw new Error('Invalid backup file: malformed prompt entry')
+  }
+}
+
+/** Deep-validates one stat against the `GenerationStat` shape. */
+function assertStat(s: unknown): void {
+  if (
+    !isRecord(s) ||
+    !isNonEmptyString(s.id) ||
+    typeof s.conversationId !== 'string' ||
+    typeof s.model !== 'string' ||
+    !isFiniteNumber(s.startedAt) ||
+    !isFiniteNumber(s.ttftMs) ||
+    !isFiniteNumber(s.totalMs) ||
+    !isFiniteNumber(s.promptTokens) ||
+    !isFiniteNumber(s.completionTokens) ||
+    !isFiniteNumber(s.tokensPerSec) ||
+    !isFiniteNumber(s.loadMs)
+  ) {
+    throw new Error('Invalid backup file: malformed stat entry')
+  }
+}
+
+/**
+ * Validate an unknown value shape before touching any store. Throws on the
+ * first structural or field-level violation — deep, not just an `id` check —
+ * so hostile-but-structurally-valid JSON can't smuggle malformed records
+ * into IndexedDB. Never partially applies: every record in every collection
+ * is checked before `importAll` writes anything.
+ */
 export function validateBackup(data: unknown): BackupFile {
   if (!isRecord(data)) throw new Error('Invalid backup file: expected a JSON object')
   if (typeof data.version !== 'number') {
@@ -120,16 +258,12 @@ export function validateBackup(data: unknown): BackupFile {
     throw new Error('Invalid backup file: "localStorage" must be an object')
   }
 
-  for (const c of data.conversations) {
-    if (!isRecord(c) || typeof c.id !== 'string' || c.id.length === 0 || !Array.isArray(c.messages)) {
-      throw new Error('Invalid backup file: malformed conversation entry')
-    }
-  }
-  assertRecordsWithId(data.stats, 'stats')
-  assertRecordsWithId(data.kbs, 'kbs')
-  assertRecordsWithId(data.chunks, 'chunks')
-  assertRecordsWithId(data.personas, 'personas')
-  assertRecordsWithId(data.prompts, 'prompts')
+  for (const c of data.conversations) assertConversation(c)
+  for (const s of data.stats) assertStat(s)
+  for (const k of data.kbs) assertKb(k)
+  for (const c of data.chunks) assertChunk(c)
+  for (const p of data.personas) assertPersona(p)
+  for (const p of data.prompts) assertPrompt(p)
   for (const [k, v] of Object.entries(data.localStorage)) {
     if (typeof v !== 'string') throw new Error(`Invalid backup file: localStorage["${k}"] must be a string`)
   }
@@ -160,6 +294,7 @@ export async function importAll(data: unknown): Promise<void> {
 
 /** Wipe every IndexedDB store and every `irisui.*` localStorage key. Irreversible. */
 export async function deleteAllData(): Promise<void> {
+  dataWiped = true
   const db = await openDB()
   await clearAllStores(db)
   try {

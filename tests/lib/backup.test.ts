@@ -1,6 +1,6 @@
 import 'fake-indexeddb/auto'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { BACKUP_VERSION, deleteAllData, exportAll, importAll, validateBackup } from '../../src/lib/backup'
+import { BACKUP_VERSION, deleteAllData, exportAll, importAll, isDataWiped, validateBackup } from '../../src/lib/backup'
 import type { BackupFile } from '../../src/lib/backup'
 import { getStore } from '../../src/lib/store'
 import type { Conversation } from '../../src/lib/store'
@@ -114,6 +114,34 @@ describe('validateBackup', () => {
     ['a malformed conversation (messages not an array)', { ...emptyBackup(), conversations: [{ id: 'x', messages: 'nope' }] }],
     ['a malformed kb entry (no id)', { ...emptyBackup(), kbs: [{ name: 'x' }] }],
     ['a non-string localStorage value', { ...emptyBackup(), localStorage: { 'irisui.theme': 123 } }],
+    ['a conversation with a null message', { ...emptyBackup(), conversations: [{ ...conv('c1'), messages: [null] }] }],
+    ['a conversation with an invalid effort', { ...emptyBackup(), conversations: [{ ...conv('c1'), effort: 'nope' }] }],
+    ['a conversation with a non-finite temperature', { ...emptyBackup(), conversations: [{ ...conv('c1'), temperature: NaN }] }],
+    [
+      'a message with an invalid role',
+      { ...emptyBackup(), conversations: [{ ...conv('c1'), messages: [{ id: 'm1', role: 'system', content: 'x' }] }] },
+    ],
+    [
+      'a chunk with a non-array vector',
+      { ...emptyBackup(), chunks: [{ id: 'ch1', kbId: 'kb1', fileName: 'a.txt', index: 0, text: 't', vector: 'nope' }] },
+    ],
+    [
+      'a chunk with a non-numeric vector entry',
+      { ...emptyBackup(), chunks: [{ id: 'ch1', kbId: 'kb1', fileName: 'a.txt', index: 0, text: 't', vector: [1, 'x'] }] },
+    ],
+    ['a persona missing systemPrompt', { ...emptyBackup(), personas: [{ id: 'p1', name: 'X', icon: '🤖', createdAt: 1 }] }],
+    [
+      'a persona with an invalid defaultEffort',
+      { ...emptyBackup(), personas: [{ id: 'p1', name: 'X', icon: '🤖', systemPrompt: 's', createdAt: 1, defaultEffort: 'nope' }] },
+    ],
+    ['a prompt missing text', { ...emptyBackup(), prompts: [{ id: 'pr1', title: 'X', createdAt: 1 }] }],
+    [
+      'a stat with a non-finite field',
+      {
+        ...emptyBackup(),
+        stats: [{ id: 's1', conversationId: 'c1', model: 'm', startedAt: 1, ttftMs: 1, totalMs: 1, promptTokens: 1, completionTokens: 1, tokensPerSec: 1, loadMs: NaN }],
+      },
+    ],
   ])('rejects %s', (_label, garbage) => {
     expect(() => validateBackup(garbage)).toThrow(/invalid backup file/i)
   })
@@ -182,6 +210,7 @@ describe('deleteAllData', () => {
     localStorage.setItem('irisui.settings', 'y')
     localStorage.setItem('unrelated.key', 'keep-me')
 
+    expect(isDataWiped()).toBe(false)
     await deleteAllData()
 
     expect(await getStore().listMeta()).toEqual([])
@@ -189,5 +218,9 @@ describe('deleteAllData', () => {
     expect(localStorage.getItem('irisui.theme')).toBeNull()
     expect(localStorage.getItem('irisui.settings')).toBeNull()
     expect(localStorage.getItem('unrelated.key')).toBe('keep-me')
+
+    // Belt-and-braces resurrection guard: `dataWiped` flips permanently so an
+    // in-flight persist()/addStat() racing the reload can't re-write data.
+    expect(isDataWiped()).toBe(true)
   })
 })

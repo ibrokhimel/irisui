@@ -4,7 +4,7 @@ import { deleteAllData, exportAll, importAll } from '../lib/backup'
 import { download } from '../lib/exporters'
 import { ConfirmDialog } from './ConfirmDialog'
 
-export function SettingsData() {
+export function SettingsData({ onBeforeWipe }: { onBeforeWipe?: () => void }) {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [exporting, setExporting] = useState(false)
   const [exportError, setExportError] = useState('')
@@ -43,9 +43,14 @@ export function SettingsData() {
   }
 
   const confirmDeleteAll = async () => {
+    // Stop any in-flight chat stream first — its trailing persist() (and any
+    // pending addStat()) is now guarded by isDataWiped(), but giving it a
+    // moment to actually unwind before we wipe closes the race further.
+    onBeforeWipe?.()
     setDeleting(true)
     setDeleteError('')
     try {
+      await new Promise((r) => setTimeout(r, 150))
       await deleteAllData()
       location.reload()
     } catch (e) {

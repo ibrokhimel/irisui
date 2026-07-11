@@ -266,6 +266,7 @@ export default function App() {
           setView('models')
           setSettingsOpen(false)
         }}
+        onBeforeWipe={chat.stop}
       />
 
       <CommandPalette open={paletteOpen} commands={paletteCommands} onClose={() => setPaletteOpen(false)} />

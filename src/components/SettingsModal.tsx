@@ -29,6 +29,7 @@ export function SettingsModal({
   onUpdateAppSettings,
   defaultModel,
   onGoToModels,
+  onBeforeWipe,
 }: {
   open: boolean
   theme: ThemeSettings
@@ -40,6 +41,7 @@ export function SettingsModal({
   onUpdateAppSettings: (patch: Partial<AppSettings>) => void
   defaultModel: string
   onGoToModels: () => void
+  onBeforeWipe?: () => void
 }) {
   const [tab, setTab] = useState<Tab>('appearance')
 
@@ -131,7 +133,7 @@ export function SettingsModal({
             {tab === 'connection' && (
               <SettingsConnection settings={appSettings} onUpdate={onUpdateAppSettings} />
             )}
-            {tab === 'data' && <SettingsData />}
+            {tab === 'data' && <SettingsData onBeforeWipe={onBeforeWipe} />}
           </div>
         </div>
 

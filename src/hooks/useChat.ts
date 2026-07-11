@@ -10,6 +10,7 @@ import { isLikelyEmbeddingModel } from '../lib/modelCatalog'
 import { computeStat, toMessageStat } from '../lib/stats'
 import type { MessageStat } from '../lib/stats'
 import { addStat } from '../lib/statsStore'
+import { isDataWiped } from '../lib/backup'
 import { retrieveContext } from '../lib/retrieve'
 import type { RagContext } from '../lib/retrieve'
 import { resolveSystemPrompt } from '../lib/personaPrompt'
@@ -94,6 +95,7 @@ export function useChat() {
 
   const persist = useCallback(
     async (conv: Conversation) => {
+      if (isDataWiped()) return
       try {
         await store.put(conv)
         setMetas((prev) => {
