@@ -49,7 +49,9 @@ export function SystemMonitor({
     let cancelled = false
     void listStats(20).then((stats) => {
       if (cancelled) return
-      setTpsHistory(stats.map((s) => s.tokensPerSec).filter((n) => n > 0).reverse())
+      const seeded = stats.map((s) => s.tokensPerSec).filter((n) => n > 0).reverse()
+      // Never clobber a sample appended while this promise was in flight.
+      setTpsHistory((h) => (h.length > 0 ? h : seeded))
     }).catch(() => { /* stats are best-effort */ })
     return () => { cancelled = true }
   }, [])
@@ -99,11 +101,11 @@ export function SystemMonitor({
               <Bar pct={gpu.vramTotalMb > 0 ? (gpu.vramUsedMb / gpu.vramTotalMb) * 100 : 0} />
             </div>
             <p className="mt-2 text-[11px] text-muted">
-              {fit.inVramBytes > 0 || fit.sharedBytes > 0
-                ? `Model fit: ${formatBytes(fit.inVramBytes)} in VRAM${
+              {mon.running.length === 0
+                ? 'No models loaded'
+                : `Model fit: ${formatBytes(fit.inVramBytes)} in VRAM${
                     fit.sharedBytes > 0 ? ` + ${formatBytes(fit.sharedBytes)} shared` : ''
-                  }`
-                : 'No models loaded'}
+                  }`}
             </p>
           </Card>
         ) : mon.running.length > 0 ? (
@@ -196,7 +198,7 @@ export function SystemMonitor({
                     <p className="text-[11px] text-muted">{formatBytes(m.size)}</p>
                   </div>
                   <p className="flex shrink-0 items-center gap-1 text-[11px] tabular-nums text-muted">
-                    <Clock className="h-3 w-3" />
+                    <Clock className="h-3 w-3" aria-hidden />
                     {formatTimeLeft(m.expires_at, now) || '—'}
                   </p>
                 </li>
@@ -211,7 +213,7 @@ export function SystemMonitor({
             <Card className="p-2.5">
               <CardLabel>GPU Temp</CardLabel>
               <p className="flex items-center gap-1 text-sm font-semibold tabular-nums text-fg">
-                <Thermometer className="h-3.5 w-3.5 text-muted" />
+                <Thermometer className="h-3.5 w-3.5 text-muted" aria-hidden />
                 {gpu.tempC} °C
               </p>
             </Card>
@@ -220,7 +222,7 @@ export function SystemMonitor({
             <Card className="p-2.5">
               <CardLabel>Disk Free</CardLabel>
               <p className="flex items-center gap-1 text-sm font-semibold tabular-nums text-fg">
-                <HardDrive className="h-3.5 w-3.5 text-muted" />
+                <HardDrive className="h-3.5 w-3.5 text-muted" aria-hidden />
                 {formatGbFigure(mon.system.disk.freeBytes / GIB)} GB
               </p>
               <p className="text-[10px] text-muted">Models drive</p>
