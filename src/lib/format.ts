@@ -48,3 +48,9 @@ export function formatEta(seconds: number): string {
   const s = Math.round(seconds % 60)
   return `${m}m ${s}s left`
 }
+
+/** One-decimal GB numeral for "8.2 / 12 GB" pairs; whole values drop the decimal. */
+export function formatGbFigure(gb: number): string {
+  const v = Math.round(gb * 10) / 10
+  return Number.isInteger(v) ? String(v) : v.toFixed(1)
+}
