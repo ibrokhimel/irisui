@@ -1,8 +1,18 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { fetchSystemStats } from '../../src/lib/system'
 
-const invoke = vi.fn()
-vi.mock('@tauri-apps/api/core', () => ({ invoke }))
+// vi.mock is hoisted above imports, so the fake must be created with vi.hoisted
+// or the factory closes over an uninitialised binding. src/lib/system.ts pulls in
+// src/lib/http.ts, which imports both invoke and Channel from this module.
+const { invoke } = vi.hoisted(() => ({ invoke: vi.fn() }))
+
+vi.mock('@tauri-apps/api/core', () => ({
+  invoke,
+  Channel: class {
+    onmessage: ((e: unknown) => void) | null = null
+  },
+}))
+
+const { fetchSystemStats } = await import('../../src/lib/system')
 
 const SNAPSHOT = {
   gpu: { name: 'RTX 4090', utilPct: 42, vramUsedMb: 8000, vramTotalMb: 24564, tempC: 61 },

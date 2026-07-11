@@ -17,8 +17,13 @@ tauri-build = { version = "2", features = [] }
 
 [dependencies]
 tauri = { version = "2", features = [] }
-tauri-plugin-http = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 # Backs the system_stats command (CPU/RAM/disk). GPU comes from nvidia-smi.
 sysinfo = "0.32"
+# Backs the http_fetch command. We do NOT use tauri-plugin-http: it stamps the
+# webview's Origin (http://tauri.localhost on a Windows release build) onto every
+# request, and Ollama answers 403 to any origin outside its allowlist. Issuing the
+# request ourselves lets us send no Origin at all, which Ollama accepts.
+reqwest = { version = "0.12", default-features = false, features = ["stream", "rustls-tls", "charset", "http2"] }
+futures-util = "0.3"
