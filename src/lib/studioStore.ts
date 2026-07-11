@@ -126,10 +126,12 @@ export async function listPrompts(): Promise<PromptItem[]> {
   })
   if (all.length > 0) return all.sort((a, b) => b.createdAt - a.createdAt)
 
-  // Empty store: seed the starters so the library isn't blank, in declared order.
+  // Empty store: seed the starters so the library isn't blank, in declared
+  // order. Stable ids make seeding idempotent — concurrent callers (StrictMode
+  // double-effects, two tabs) put the same keys instead of duplicating.
   const now = Date.now()
   const seeded = STARTER_PROMPTS.map((p, i) => ({
-    id: crypto.randomUUID(),
+    id: `starter-${i}`,
     title: p.title,
     text: p.text,
     createdAt: now - i,
