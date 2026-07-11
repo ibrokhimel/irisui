@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { m } from 'motion/react'
-import { Check, Copy, RefreshCw } from 'lucide-react'
+import { Check, Copy, RefreshCw, StepForward } from 'lucide-react'
 import type { ChatMessage } from '../types'
 import { SPRING, fadeUp } from '../lib/motion'
 import { Markdown } from './Markdown'
@@ -12,11 +12,13 @@ export function Message({
   streaming,
   isLast,
   onRegenerate,
+  onContinue,
 }: {
   message: ChatMessage
   streaming: boolean
   isLast: boolean
   onRegenerate?: () => void
+  onContinue?: () => void
 }) {
   const [copied, setCopied] = useState(false)
 
@@ -89,6 +91,16 @@ export function Message({
               >
                 <RefreshCw className="h-3.5 w-3.5" />
                 Regenerate
+              </button>
+            )}
+            {isLast && onContinue && (
+              <button
+                onClick={onContinue}
+                aria-label="Continue response"
+                className="flex items-center gap-1 rounded-md px-2 py-1 text-xs text-muted transition hover:bg-panel2 hover:text-fg"
+              >
+                <StepForward className="h-3.5 w-3.5" />
+                Continue
               </button>
             )}
           </div>

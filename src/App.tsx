@@ -130,6 +130,7 @@ export default function App() {
                   messages={chat.messages}
                   isStreaming={chat.isStreaming}
                   onRegenerate={chat.regenerate}
+                  onContinue={chat.continueResponse}
                 />
                 <ChatInput variant="docked" {...composerProps} />
               </>

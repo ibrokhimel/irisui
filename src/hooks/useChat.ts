@@ -132,17 +132,29 @@ export function useChat() {
 
   const stop = useCallback(() => abortRef.current?.abort(), [])
 
-  /** Stream an assistant reply for `history` within conversation `base`. */
+  /**
+   * Stream an assistant reply for `history` within conversation `base`.
+   * With `continueFrom` set (a message id), `history` already ends with that
+   * (non-empty) assistant message — tokens are appended to it in place
+   * instead of a new assistant message being started.
+   */
   const run = useCallback(
-    async (base: Conversation, history: ChatMessage[], title: string) => {
-      const assistantId = crypto.randomUUID()
+    async (
+      base: Conversation,
+      history: ChatMessage[],
+      title: string,
+      opts?: { continueFrom?: string },
+    ) => {
+      const continueFrom = opts?.continueFrom
+      const existing = continueFrom ? (history.find((m) => m.id === continueFrom)?.content ?? '') : ''
+      const assistantId = continueFrom ?? crypto.randomUUID()
       const now = Date.now()
 
       setCurrent({
         ...base,
         title,
         updatedAt: now,
-        messages: [...history, { id: assistantId, role: 'assistant', content: '' }],
+        messages: continueFrom ? history : [...history, { id: assistantId, role: 'assistant', content: '' }],
       })
       setIsStreaming(true)
       // Persist the user turn immediately (survives a mid-stream crash / close).
@@ -163,7 +175,7 @@ export function useChat() {
             : c,
         )
 
-      let content = ''
+      let content = existing
       let received = false
       const t0 = performance.now()
       let firstTokenAt = 0
@@ -195,7 +207,9 @@ export function useChat() {
         }
       } catch (err) {
         if (isAbortError(err)) {
-          if (!received) content = '_Stopped._'
+          // Only stamp `_Stopped._` when nothing was ever in the message — for a
+          // continued reply `content` already holds the prior text, so it's left as-is.
+          if (!received && !content) content = '_Stopped._'
         } else {
           content = toErrorMessage(err)
         }
@@ -215,7 +229,9 @@ export function useChat() {
           ...base,
           title,
           updatedAt: Date.now(),
-          messages: [...history, { id: assistantId, role: 'assistant', content, stat: messageStat }],
+          messages: continueFrom
+            ? history.map((m) => (m.id === assistantId ? { ...m, content, stat: messageStat ?? m.stat } : m))
+            : [...history, { id: assistantId, role: 'assistant', content, stat: messageStat }],
         })
       }
     },
@@ -240,6 +256,15 @@ export function useChat() {
     while (history.length && history[history.length - 1].role === 'assistant') history.pop()
     if (history.length === 0) return
     await run(base, history, base.title)
+  }, [isStreaming, status, run])
+
+  /** Resume generation on the last assistant message (e.g. after Stop, or a short reply). */
+  const continueResponse = useCallback(async () => {
+    const base = currentRef.current
+    if (isStreaming || status !== 'online' || !base.model) return
+    const last = base.messages[base.messages.length - 1]
+    if (!last || last.role !== 'assistant' || !last.content) return
+    await run(base, base.messages, base.title, { continueFrom: last.id })
   }, [isStreaming, status, run])
 
   // ── per-chat settings (persist only once the chat has content) ──
@@ -366,6 +391,7 @@ export function useChat() {
     send,
     stop,
     regenerate,
+    continueResponse,
     newChat,
     selectChat,
     renameChat,
