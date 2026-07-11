@@ -204,40 +204,50 @@ function KbCard({
     const files = Array.from(fileList)
     setError('')
     setUploading(true)
+    const failedFiles: Array<{ name: string; error: string }> = []
     try {
       for (const file of files) {
-        const text = await file.text()
-        const pieces = chunkText(text)
-        if (pieces.length === 0) continue
-        setProgress({ fileName: file.name, done: 0, total: pieces.length })
+        try {
+          const text = await file.text()
+          const pieces = chunkText(text)
+          if (pieces.length === 0) continue
+          setProgress({ fileName: file.name, done: 0, total: pieces.length })
 
-        const stored: StoredChunk[] = []
-        for (let i = 0; i < pieces.length; i += EMBED_BATCH) {
-          const batch = pieces.slice(i, i + EMBED_BATCH)
-          const vectors = await embedTexts(kb.embedModel, batch)
-          batch.forEach((chunk, j) => {
-            stored.push({
-              id: crypto.randomUUID(),
-              kbId: kb.id,
-              fileName: file.name,
-              index: i + j,
-              text: chunk,
-              vector: vectors[j],
+          const stored: StoredChunk[] = []
+          for (let i = 0; i < pieces.length; i += EMBED_BATCH) {
+            const batch = pieces.slice(i, i + EMBED_BATCH)
+            const vectors = await embedTexts(kb.embedModel, batch)
+            batch.forEach((chunk, j) => {
+              stored.push({
+                id: crypto.randomUUID(),
+                kbId: kb.id,
+                fileName: file.name,
+                index: i + j,
+                text: chunk,
+                vector: vectors[j],
+              })
             })
-          })
-          setProgress({
-            fileName: file.name,
-            done: Math.min(i + EMBED_BATCH, pieces.length),
-            total: pieces.length,
+            setProgress({
+              fileName: file.name,
+              done: Math.min(i + EMBED_BATCH, pieces.length),
+              total: pieces.length,
+            })
+          }
+
+          await addChunks(kb.id, file.name, stored)
+          await onChanged()
+        } catch (e) {
+          failedFiles.push({
+            name: file.name,
+            error: indexErrorMessage(e),
           })
         }
-
-        await addChunks(kb.id, file.name, stored)
-        await onChanged()
       }
-    } catch (e) {
-      setError(indexErrorMessage(e))
     } finally {
+      if (failedFiles.length > 0) {
+        const failureMsg = failedFiles.map((f) => `${f.name} (${f.error})`).join(', ')
+        setError(`Failed: ${failureMsg}`)
+      }
       setProgress(null)
       setUploading(false)
       if (inputRef.current) inputRef.current.value = ''
