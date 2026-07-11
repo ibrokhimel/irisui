@@ -9,3 +9,6 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 .superpowers/
+
+# Local API keys held by the dev server. Never commit.
+.keys.local.json
