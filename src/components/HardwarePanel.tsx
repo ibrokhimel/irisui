@@ -1,5 +1,7 @@
 import { useState } from 'react'
+import { m } from 'motion/react'
 import { Cpu, Download } from 'lucide-react'
+import { fadeUp, stagger } from '../lib/motion'
 import type { HardwareProfile } from '../lib/hardware'
 import { RAM_OPTIONS, detectHardware, loadHardwareProfile, saveHardwareProfile } from '../lib/hardware'
 import { recommendModels } from '../lib/recommend'
@@ -53,8 +55,15 @@ export function HardwarePanel({
 
       {profile && recs.length > 0 && (
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-          {recs.map((r) => (
-            <div key={r.category} className="flex items-center gap-3 rounded-xl border border-line bg-panel2/40 px-3 py-2.5">
+          {recs.map((r, i) => (
+            <m.div
+              key={r.category}
+              variants={fadeUp}
+              initial="hidden"
+              animate="show"
+              transition={stagger(i)}
+              className="flex items-center gap-3 rounded-xl border border-line bg-panel2/40 px-3 py-2.5"
+            >
               <div className="min-w-0 flex-1">
                 <p className="text-[11px] font-medium uppercase tracking-wider text-muted">{r.category}</p>
                 <p className="truncate text-sm font-medium text-fg">{r.label}</p>
@@ -72,7 +81,7 @@ export function HardwarePanel({
                   Pull
                 </button>
               )}
-            </div>
+            </m.div>
           ))}
         </div>
       )}

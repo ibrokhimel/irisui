@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react'
+import { AnimatePresence, m } from 'motion/react'
 import { ChevronDown, Gauge, Star, Trash2 } from 'lucide-react'
 import type { OllamaModel } from '../types'
 import type { BenchmarkResult, ModelDetails } from '../lib/ollama'
@@ -150,32 +151,42 @@ export function ModelRow({
         </div>
       </div>
 
-      {expanded && (
-        <div className="space-y-2 border-t border-line px-4 py-3 text-xs">
-          {isDefault ? null : (
-            <button
-              onClick={() => onSetDefault(model.name)}
-              className="rounded-lg border border-line px-2.5 py-1.5 text-muted transition hover:border-iris/40 hover:text-fg sm:hidden"
-            >
-              Set as default
-            </button>
-          )}
-          {bench && (
-            <p className="text-muted">
-              Speed:{' '}
-              <span className="text-fg">{bench.tokensPerSec.toFixed(1)} tok/s</span>, first token{' '}
-              {Math.round(bench.ttftMs)} ms ({bench.evalCount} tokens generated).
-            </p>
-          )}
-          {detailsError ? (
-            <p className="text-rose-300">{detailsError}</p>
-          ) : !details ? (
-            <p className="text-muted">Loading details…</p>
-          ) : (
-            <Details details={details} model={model} />
-          )}
-        </div>
-      )}
+      <AnimatePresence initial={false}>
+        {expanded && (
+          <m.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.2, ease: 'easeOut' }}
+            className="overflow-hidden"
+          >
+            <div className="space-y-2 border-t border-line px-4 py-3 text-xs">
+              {isDefault ? null : (
+                <button
+                  onClick={() => onSetDefault(model.name)}
+                  className="rounded-lg border border-line px-2.5 py-1.5 text-muted transition hover:border-iris/40 hover:text-fg sm:hidden"
+                >
+                  Set as default
+                </button>
+              )}
+              {bench && (
+                <p className="text-muted">
+                  Speed:{' '}
+                  <span className="text-fg">{bench.tokensPerSec.toFixed(1)} tok/s</span>, first token{' '}
+                  {Math.round(bench.ttftMs)} ms ({bench.evalCount} tokens generated).
+                </p>
+              )}
+              {detailsError ? (
+                <p className="text-rose-300">{detailsError}</p>
+              ) : !details ? (
+                <p className="text-muted">Loading details…</p>
+              ) : (
+                <Details details={details} model={model} />
+              )}
+            </div>
+          </m.div>
+        )}
+      </AnimatePresence>
     </div>
   )
 }

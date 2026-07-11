@@ -1,6 +1,8 @@
 import { useState } from 'react'
+import { m } from 'motion/react'
 import { Check, Copy, RefreshCw } from 'lucide-react'
 import type { ChatMessage } from '../types'
+import { SPRING, fadeUp } from '../lib/motion'
 import { Markdown } from './Markdown'
 import { IrisMark } from './IrisMark'
 import { formatStatLine } from '../lib/stats'
@@ -30,23 +32,36 @@ export function Message({
 
   if (message.role === 'user') {
     return (
-      <div className="flex justify-end">
+      <m.div
+        className="flex justify-end"
+        variants={fadeUp}
+        initial="hidden"
+        animate="show"
+        transition={SPRING}
+      >
         <div className="max-w-[80%] whitespace-pre-wrap break-words rounded-2xl rounded-br-sm border border-line bg-panel2 px-4 py-2.5 text-[15px] leading-relaxed text-fg">
           {message.content}
         </div>
-      </div>
+      </m.div>
     )
   }
 
   return (
-    <div className="group flex gap-3">
+    <m.div
+      className="group flex gap-3"
+      variants={fadeUp}
+      initial="hidden"
+      animate="show"
+      transition={SPRING}
+    >
       <div
         className={
           'mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border bg-panel2 ' +
           (streaming ? 'border-iris ring-2 ring-iris/20' : 'border-line')
         }
       >
-        <IrisMark className="h-[18px] w-[18px] text-iris" />
+        {/* The aperture turns while the model generates. */}
+        <IrisMark className={'h-[18px] w-[18px] text-iris' + (streaming ? ' anim-aperture' : '')} />
       </div>
       <div className="min-w-0 flex-1 pt-1">
         {message.content && <Markdown content={message.content} />}
@@ -79,6 +94,6 @@ export function Message({
           </div>
         )}
       </div>
-    </div>
+    </m.div>
   )
 }

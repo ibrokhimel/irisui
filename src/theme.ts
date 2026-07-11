@@ -115,8 +115,16 @@ function normalizeHex(hex: string): string {
 }
 
 // ── apply / persist ───────────────────────────────────────────────────
+let themeFadeTimer: number | undefined
+
 export function applyTheme(theme: ThemeSettings): void {
   const root = document.documentElement
+
+  // Cross-fade the palette swap (class defined in index.css; reduced motion
+  // collapses it via the global media query).
+  root.classList.add('theme-fade')
+  window.clearTimeout(themeFadeTimer)
+  themeFadeTimer = window.setTimeout(() => root.classList.remove('theme-fade'), 350)
   const preset = PRESETS[theme.preset] ?? PRESETS.light
   for (const [key, value] of Object.entries(preset.vars)) {
     root.style.setProperty(key, value)
