@@ -80,3 +80,17 @@ export const MODEL_CATALOG: CatalogModel[] = [
   { name: 'smollm2:1.7b', label: 'SmolLM2 1.7B', blurb: 'Efficient small model.', approxSize: '~1.8 GB', category: 'Small' },
   { name: 'phi3:3.8b', label: 'Phi-3 Mini', blurb: 'Small, capable Microsoft model.', approxSize: '~2.2 GB', category: 'Small' },
 ]
+
+/**
+ * Heuristic: is this model name almost certainly an embedding model (can't
+ * chat)? Used only to steer AUTO-selection of a chat model — users can still
+ * pick anything manually. Covers the catalog's Embedding entries plus common
+ * embedding-name patterns.
+ */
+export function isLikelyEmbeddingModel(name: string): boolean {
+  const n = name.toLowerCase()
+  if (/embed|minilm|bge-/.test(n)) return true
+  return MODEL_CATALOG.some(
+    (m) => m.category === 'Embedding' && (n === m.name || n.startsWith(`${m.name}:`)),
+  )
+}

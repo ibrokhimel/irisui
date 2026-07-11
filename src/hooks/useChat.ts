@@ -6,6 +6,7 @@ import { getStore } from '../lib/store'
 import type { Conversation, ConversationMeta } from '../lib/store'
 import { download, slugify, toJSON, toMarkdown } from '../lib/exporters'
 import { loadModelPrefs } from '../lib/modelPrefs'
+import { isLikelyEmbeddingModel } from '../lib/modelCatalog'
 import { computeStat, toMessageStat } from '../lib/stats'
 import type { MessageStat } from '../lib/stats'
 import { addStat } from '../lib/statsStore'
@@ -113,7 +114,10 @@ export function useChat() {
         setCurrent((c) => {
           if (c.model && list.some((m) => m.name === c.model)) return c
           const pref = loadModelPrefs().defaultModel
-          const model = pref && list.some((m) => m.name === pref) ? pref : list[0].name
+          // Never auto-select an embedding model as the chat model.
+          const chatable = list.filter((m) => !isLikelyEmbeddingModel(m.name))
+          const fallback = (chatable[0] ?? list[0]).name
+          const model = pref && list.some((m) => m.name === pref) ? pref : fallback
           return { ...c, model }
         })
       }
@@ -332,10 +336,11 @@ export function useChat() {
     abortRef.current?.abort()
     setRagNotice(false)
     const pref = loadModelPrefs().defaultModel
+    const chatable = models.filter((m) => !isLikelyEmbeddingModel(m.name))
     const model =
       pref && models.some((m) => m.name === pref)
         ? pref
-        : currentRef.current.model || models[0]?.name || ''
+        : currentRef.current.model || chatable[0]?.name || models[0]?.name || ''
     setCurrent(newConversation(model))
     setInput('')
   }, [models])
