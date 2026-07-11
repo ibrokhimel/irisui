@@ -5,11 +5,22 @@
  * that reads var(--color-*) recolors live. Preferences persist to localStorage.
  */
 
-export type ThemePreset = 'light' | 'dark' | 'wine'
+export type ThemePreset = 'light' | 'dark' | 'wine' | 'custom'
+
+export interface CustomThemeVars {
+  bg: string
+  panel: string
+  panel2: string
+  line: string
+  fg: string
+  muted: string
+}
 
 export interface ThemeSettings {
   preset: ThemePreset
   accent: string
+  /** User-picked surface colors; present once the custom theme has been edited. */
+  custom?: Partial<CustomThemeVars>
 }
 
 export interface AccentSwatch {
@@ -19,7 +30,7 @@ export interface AccentSwatch {
 
 type Vars = Record<string, string>
 
-export const PRESETS: Record<ThemePreset, { label: string; scheme: 'light' | 'dark'; vars: Vars }> = {
+export const PRESETS: Record<Exclude<ThemePreset, 'custom'>, { label: string; scheme: 'light' | 'dark'; vars: Vars }> = {
   light: {
     label: 'Light',
     scheme: 'light',
@@ -68,6 +79,57 @@ export const ACCENTS: AccentSwatch[] = [
   { name: 'Green', value: '#3f9142' },
   { name: 'Wine', value: '#b8404d' },
 ]
+
+/** Single source of truth for key -> CSS var; consumed by customToVars() and
+ *  by the Settings -> Appearance editor's token lookups. */
+export const CUSTOM_TOKEN_MAP = [
+  ['bg', '--color-bg'],
+  ['panel', '--color-panel'],
+  ['panel2', '--color-panel2'],
+  ['line', '--color-line'],
+  ['fg', '--color-fg'],
+  ['muted', '--color-muted'],
+] as const
+
+/** Editor rows for Settings → Appearance. */
+export const CUSTOM_TOKEN_LABELS: { key: keyof CustomThemeVars; label: string }[] = [
+  { key: 'bg', label: 'Background' },
+  { key: 'panel', label: 'Panel' },
+  { key: 'panel2', label: 'Elevated panel' },
+  { key: 'line', label: 'Border' },
+  { key: 'fg', label: 'Text' },
+  { key: 'muted', label: 'Muted text' },
+]
+
+/**
+ * Resolve user-picked tokens to CSS vars. Missing/invalid entries fall back
+ * per-var to the dark preset, and the color scheme follows the background's
+ * luminance so form controls / scrollbars match automatically.
+ */
+export function customToVars(
+  custom: Partial<CustomThemeVars> | undefined,
+): { vars: Vars; scheme: 'light' | 'dark' } {
+  const fallback = PRESETS.dark.vars
+  const vars: Vars = {}
+  for (const [key, cssVar] of CUSTOM_TOKEN_MAP) {
+    const value = custom?.[key]
+    vars[cssVar] = typeof value === 'string' && isValidHex(value) ? normalizeHex(value) : fallback[cssVar]
+  }
+  return { vars, scheme: luminance(vars['--color-bg']) > 0.5 ? 'light' : 'dark' }
+}
+
+/** Copy a preset's surface colors into editable custom tokens. */
+export function seedCustomFromPreset(preset: Exclude<ThemePreset, 'custom'>): CustomThemeVars {
+  const vars = PRESETS[preset].vars
+  return {
+    bg: vars['--color-bg'],
+    panel: vars['--color-panel'],
+    panel2: vars['--color-panel2'],
+    line: vars['--color-line'],
+    fg: vars['--color-fg'],
+    muted: vars['--color-muted'],
+  }
+}
 
 export const DEFAULT_THEME: ThemeSettings = { preset: 'dark', accent: '#c96442' }
 
@@ -125,15 +187,32 @@ export function applyTheme(theme: ThemeSettings): void {
   root.classList.add('theme-fade')
   window.clearTimeout(themeFadeTimer)
   themeFadeTimer = window.setTimeout(() => root.classList.remove('theme-fade'), 350)
-  const preset = PRESETS[theme.preset] ?? PRESETS.light
-  for (const [key, value] of Object.entries(preset.vars)) {
+  const resolved =
+    theme.preset === 'custom'
+      ? customToVars(theme.custom)
+      : (() => {
+          const p = PRESETS[theme.preset as Exclude<ThemePreset, 'custom'>] ?? PRESETS.light
+          return { vars: p.vars, scheme: p.scheme }
+        })()
+  for (const [key, value] of Object.entries(resolved.vars)) {
     root.style.setProperty(key, value)
   }
   const accent = isValidHex(theme.accent) ? normalizeHex(theme.accent) : DEFAULT_THEME.accent
   root.style.setProperty('--color-iris', accent)
   root.style.setProperty('--color-iris-strong', darken(accent, 0.14))
   root.style.setProperty('--color-on-accent', luminance(accent) > 0.6 ? '#1c1b18' : '#ffffff')
-  root.style.colorScheme = preset.scheme
+  root.style.colorScheme = resolved.scheme
+}
+
+function sanitizeCustom(raw: unknown): Partial<CustomThemeVars> | undefined {
+  if (!raw || typeof raw !== 'object') return undefined
+  const r = raw as Record<string, unknown>
+  const out: Partial<CustomThemeVars> = {}
+  for (const { key } of CUSTOM_TOKEN_LABELS) {
+    const v = r[key]
+    if (typeof v === 'string' && isValidHex(v)) out[key] = normalizeHex(v)
+  }
+  return Object.keys(out).length > 0 ? out : undefined
 }
 
 export function loadTheme(): ThemeSettings {
@@ -141,10 +220,18 @@ export function loadTheme(): ThemeSettings {
     const raw = localStorage.getItem(STORAGE_KEY)
     if (!raw) return DEFAULT_THEME
     const parsed = JSON.parse(raw) as Partial<ThemeSettings>
-    const preset = parsed.preset && parsed.preset in PRESETS ? parsed.preset : DEFAULT_THEME.preset
+    const custom = sanitizeCustom(parsed.custom)
+    const preset: ThemePreset =
+      parsed.preset === 'custom'
+        ? custom
+          ? 'custom'
+          : DEFAULT_THEME.preset
+        : parsed.preset && parsed.preset in PRESETS
+          ? parsed.preset
+          : DEFAULT_THEME.preset
     const accent =
       parsed.accent && isValidHex(parsed.accent) ? normalizeHex(parsed.accent) : DEFAULT_THEME.accent
-    return { preset, accent }
+    return { preset, accent, custom }
   } catch {
     return DEFAULT_THEME
   }
