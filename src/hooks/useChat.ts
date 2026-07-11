@@ -9,6 +9,8 @@ import { loadModelPrefs } from '../lib/modelPrefs'
 import { computeStat, toMessageStat } from '../lib/stats'
 import type { MessageStat } from '../lib/stats'
 import { addStat } from '../lib/statsStore'
+import { retrieveContext } from '../lib/retrieve'
+import type { RagContext } from '../lib/retrieve'
 
 function newConversation(model: string): Conversation {
   const now = Date.now()
@@ -55,6 +57,7 @@ function metaOf(c: Conversation): ConversationMeta {
     model: c.model,
     effort: c.effort,
     temperature: c.temperature,
+    kbId: c.kbId,
   }
 }
 
@@ -73,6 +76,8 @@ export function useChat() {
   const [input, setInput] = useState('')
   const [isStreaming, setIsStreaming] = useState(false)
   const [search, setSearch] = useState('')
+  // One-time inline notice: a KB is attached but its embedding model is missing.
+  const [ragNotice, setRagNotice] = useState(false)
 
   const currentRef = useRef(current)
   useEffect(() => {
@@ -143,18 +148,26 @@ export function useChat() {
       base: Conversation,
       history: ChatMessage[],
       title: string,
-      opts?: { continueFrom?: string },
+      opts?: { continueFrom?: string; context?: RagContext },
     ) => {
       const continueFrom = opts?.continueFrom
+      const context = opts?.context
       const existing = continueFrom ? (history.find((m) => m.id === continueFrom)?.content ?? '') : ''
       const assistantId = continueFrom ?? crypto.randomUUID()
       const now = Date.now()
+
+      const newAssistant: ChatMessage = {
+        id: assistantId,
+        role: 'assistant',
+        content: '',
+        ...(context ? { sources: context.sources } : {}),
+      }
 
       setCurrent({
         ...base,
         title,
         updatedAt: now,
-        messages: continueFrom ? history : [...history, { id: assistantId, role: 'assistant', content: '' }],
+        messages: continueFrom ? history : [...history, newAssistant],
       })
       setIsStreaming(true)
       // Persist the user turn immediately (survives a mid-stream crash / close).
@@ -164,6 +177,8 @@ export function useChat() {
       abortRef.current = controller
       const apiMessages = [
         { role: 'system', content: EFFORT_PROMPTS[base.effort] },
+        // Retrieved source excerpts, injected right after the effort prompt.
+        ...(context ? [{ role: 'system', content: context.systemMessage }] : []),
         ...history.map((m) => ({ role: m.role, content: m.content })),
       ]
 
@@ -231,7 +246,7 @@ export function useChat() {
           updatedAt: Date.now(),
           messages: continueFrom
             ? history.map((m) => (m.id === assistantId ? { ...m, content, stat: messageStat ?? m.stat } : m))
-            : [...history, { id: assistantId, role: 'assistant', content, stat: messageStat }],
+            : [...history, { ...newAssistant, content, stat: messageStat }],
         })
       }
     },
@@ -246,8 +261,29 @@ export function useChat() {
     const history = [...base.messages, userMsg]
     const title = base.messages.length === 0 ? deriveTitle(text) : base.title
     setInput('')
-    await run(base, history, title)
-  }, [input, isStreaming, status, run])
+
+    // Fresh send only (not regenerate/continue): if a KB is attached, retrieve
+    // grounding context. Any failure degrades to a normal context-free reply —
+    // retrieval never blocks the chat.
+    let context: RagContext | undefined
+    if (base.kbId) {
+      const result = await retrieveContext(
+        base.kbId,
+        text,
+        models.map((m) => m.name),
+      )
+      if (result.kind === 'context') {
+        context = { systemMessage: result.systemMessage, sources: result.sources }
+        setRagNotice(false)
+      } else if (result.kind === 'embed-missing') {
+        setRagNotice(true)
+      } else if (result.kind === 'error') {
+        console.warn('RAG retrieval failed; answering without knowledge context')
+      }
+    }
+
+    await run(base, history, title, { context })
+  }, [input, isStreaming, status, run, models])
 
   const regenerate = useCallback(async () => {
     const base = currentRef.current
@@ -282,10 +318,19 @@ export function useChat() {
     (temperature: number) => patchCurrent({ temperature }),
     [patchCurrent],
   )
+  const setKb = useCallback(
+    (kbId: string | undefined) => {
+      setRagNotice(false)
+      patchCurrent({ kbId })
+    },
+    [patchCurrent],
+  )
+  const dismissRagNotice = useCallback(() => setRagNotice(false), [])
 
   // ── conversation management ──
   const newChat = useCallback(() => {
     abortRef.current?.abort()
+    setRagNotice(false)
     const pref = loadModelPrefs().defaultModel
     const model =
       pref && models.some((m) => m.name === pref)
@@ -299,6 +344,7 @@ export function useChat() {
     async (id: string) => {
       if (id === currentRef.current.id) return
       abortRef.current?.abort()
+      setRagNotice(false)
       try {
         const conv = await store.get(id)
         if (!conv) return
@@ -375,6 +421,7 @@ export function useChat() {
     selectedModel: current.model,
     effort: current.effort,
     temperature: current.temperature,
+    kbId: current.kbId,
     // history
     metas,
     search,
@@ -383,10 +430,13 @@ export function useChat() {
     input,
     setInput,
     isStreaming,
+    ragNotice,
+    dismissRagNotice,
     // per-chat setters
     setSelectedModel,
     setEffort,
     setTemperature,
+    setKb,
     // actions
     send,
     stop,

@@ -7,21 +7,24 @@ import { HomeScreen } from './components/HomeScreen'
 import { MessageList } from './components/MessageList'
 import { ChatInput } from './components/ChatInput'
 import { ModelsPage } from './components/ModelsPage'
+import { KnowledgePage } from './components/KnowledgePage'
 import { StatsPage } from './components/StatsPage'
 import { SettingsModal } from './components/SettingsModal'
 import { useChat } from './hooks/useChat'
 import { useTheme } from './hooks/useTheme'
 import { useModelPrefs } from './hooks/useModelPrefs'
 import { useModelPull } from './hooks/useModelPull'
+import { useKbs } from './hooks/useKbs'
 
 export default function App() {
   const chat = useChat()
   const { theme, setPreset, setAccent, reset } = useTheme()
   const { prefs, setDefaultModel, toggleFavorite } = useModelPrefs()
   const pull = useModelPull(chat.refresh)
+  const { kbs, reload: reloadKbs } = useKbs()
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(true)
-  const [view, setView] = useState<'chat' | 'models' | 'stats'>('chat')
+  const [view, setView] = useState<'chat' | 'models' | 'knowledge' | 'stats'>('chat')
 
   const empty = chat.messages.length === 0
 
@@ -61,6 +64,11 @@ export default function App() {
     models: orderedModels,
     selectedModel: chat.selectedModel,
     onSelectModel: chat.setSelectedModel,
+    kbs,
+    selectedKbId: chat.kbId,
+    onSelectKb: chat.setKb,
+    ragNotice: chat.ragNotice,
+    onDismissRagNotice: chat.dismissRagNotice,
   }
 
   // Keyed view swap: chat home / conversation / models / stats cross-fade.
@@ -79,6 +87,7 @@ export default function App() {
         onSearch={chat.setSearch}
         onNewChat={handleNewChat}
         onOpenModels={() => setView('models')}
+        onOpenKnowledge={() => setView('knowledge')}
         onOpenStats={() => setView('stats')}
         pullActive={pull.pulling}
         pullPercent={pullPercent}
@@ -93,8 +102,16 @@ export default function App() {
         <TopBar
           onToggleSidebar={() => setSidebarOpen((o) => !o)}
           onOpenSettings={() => setSettingsOpen(true)}
-          title={view === 'models' ? 'Models' : view === 'stats' ? 'Stats' : chat.title}
-          showTitle={view === 'models' || view === 'stats' || !empty}
+          title={
+            view === 'models'
+              ? 'Models'
+              : view === 'knowledge'
+                ? 'Knowledge'
+                : view === 'stats'
+                  ? 'Stats'
+                  : chat.title
+          }
+          showTitle={view === 'models' || view === 'knowledge' || view === 'stats' || !empty}
         />
 
         <AnimatePresence mode="wait" initial={false}>
@@ -114,6 +131,14 @@ export default function App() {
                 prefs={prefs}
                 onSetDefault={setDefaultModel}
                 onToggleFavorite={toggleFavorite}
+                pull={pull}
+              />
+            ) : view === 'knowledge' ? (
+              <KnowledgePage
+                models={chat.models}
+                status={chat.status}
+                kbs={kbs}
+                onChanged={reloadKbs}
                 pull={pull}
               />
             ) : view === 'stats' ? (
