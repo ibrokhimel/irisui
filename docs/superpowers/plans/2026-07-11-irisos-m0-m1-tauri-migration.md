@@ -21,33 +21,82 @@
 - Tasks 2 and 3 are **gates**: on FAIL, stop and revise the plan with the user — do not push through.
 - The two spike apps are throwaway: they live in the scratchpad, are never committed, and only their verdicts (recorded in the Spike Results section below) persist.
 
-## Execution status (live)
+## Execution status — M1 COMPLETE ✅
 
 | Task | State | Commit |
 |---|---|---|
-| 1. Preflight | ✅ done | `9d83167` |
-| 2. Spike: Ollama streaming | ⏸ **folded into Task 6's verify** — see note below | — |
-| 3. Spike: module loading | ⏸ **deferred to the M3 plan** — see note below | — |
-| 4. Scaffold Tauri | ✅ files written, **compile unverified** (blocked on MSVC) | `76e1d31` |
-| 5. `appFetch` | ✅ done, 3 tests | `8d6acae` |
-| 6. Ollama/HF transport | ✅ done, suite green unchanged | `d58c69d` |
-| 7. `/api/system` → Rust | ✅ TS done, 2 tests; **Rust compile unverified** | `c2a79b4` |
-| 8. Whisper runtime smoke | ⛔ blocked — needs a running desktop build | — |
-| 9. First-run migration notice | ✅ done, 3 tests | `2f33f9b` |
-| 10. v2.0.0 build + DoD | ⛔ blocked — needs MSVC toolchain | — |
+| 1. Preflight | ✅ | `9d83167` |
+| 2. Spike: Ollama streaming | ✅ folded into the release DoD — see note | — |
+| 3. Spike: module loading | ⏸ deferred to the M3 plan — see note | — |
+| 4. Scaffold Tauri | ✅ compiles, runs | `76e1d31` |
+| 5. `appFetch` | ✅ 7 tests | `8d6acae`, `36cb9d2` |
+| 6. Ollama/HF transport | ✅ suite green unchanged | `d58c69d` |
+| 7. `/api/system` → Rust | ✅ verified in the release binary | `c2a79b4` |
+| 8. Whisper runtime smoke | ✅ worker + HF CDN download + inference | — |
+| 9. First-run migration notice | ✅ 3 tests | `2f33f9b` |
+| 10. v2.0.0 build + DoD | ✅ **all pass against the shipped binary** | `4f6d384` |
 
-Suite at time of writing: **238 tests / 29 files, all passing.** `tsc --noEmit` clean.
+**242 tests / 29 files passing** (3 consecutive clean runs). `tsc --noEmit` clean.
+4 Rust unit tests passing. Installers: `IrisUI_2.0.0_x64-setup.exe`, `IrisUI_2.0.0_x64_en-US.msi`.
 
-### Deviation 1 — Spike 1 folded into Task 6 rather than run as a throwaway app
+### Definition of Done — verified against the RELEASE binary, not `tauri dev`
 
-The spike's purpose was to prove `tauri-plugin-http` streams before committing to
-it. But `appFetch` (`src/lib/http.ts`) is the correct abstraction *regardless* of
-the answer: if plugin-http cannot stream, only `appFetch`'s internals change — it
-swaps to a Rust command emitting chunks over a `tauri::ipc::Channel`, and not one
-call site moves. So the gate was folded into Task 6's real-app verification
-instead of paying for a separate scaffold. **The gate itself still stands and is
-still unmet**: streaming must be confirmed token-by-token in the desktop build
-before v2.0 ships, and it is a DoD item in Task 10.
+Driven over CDP (WebView2 exposes a debug port via
+`WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=--remote-debugging-port=9222`), so these
+are observations of the shipped artifact, not of a dev server:
+
+- Origin is `http://tauri.localhost` — confirms no Vite behind it.
+- `system_stats` returns live data (RTX 3060, 16 cores, 15.8 GiB) — **this is the
+  check that would have 404'd without Task 7.**
+- Ollama reachable, models listed, composer live.
+- Chat streams token-by-token through the real `ChatInput` (8 incremental growth
+  steps over 1162 ms), and the stop button terminates generation.
+- Whisper spawns its worker, downloads weights from the HF CDN, and runs
+  inference — no CSP/CORS blocks.
+- IndexedDB + localStorage usable in the release origin.
+
+### Three real bugs the release DoD caught (all invisible in `tauri dev`)
+
+1. **`tauri-plugin-http` cannot talk to Ollama from a Windows release build.**
+   The plugin stamps the webview's `Origin` onto every request; in release that
+   is `http://tauri.localhost`, which is not in Ollama's allowlist, so Ollama
+   answered **403 with an empty body** and the app showed "Ollama is offline".
+   `tauri dev` serves from `http://localhost:5173`, which Ollama *does* allow —
+   so dev looked perfect. Overriding `Origin` from JS does not help: the plugin
+   sets it Rust-side. **Fix:** dropped plugin-http entirely for our own
+   `http_fetch` Rust command, which sends no `Origin` and streams the body over a
+   `tauri::ipc::Channel`; `http_cancel` backs the stop button. `appFetch` kept its
+   signature, so none of the 8 call sites moved. (`36cb9d2`)
+2. **`nvidia-smi` flashed a console window every 2 seconds.** The System Monitor
+   polls at 2 s and each Rust `Command::new` spawn popped a cmd window. The Node
+   middleware this replaced passed `windowsHide: true`; the port dropped it.
+   **Fix:** `CREATE_NO_WINDOW`. (`36cb9d2`)
+3. **A flaky pre-existing test.** `backup.test.ts` built `emptyBackup()` twice and
+   compared them, so it failed whenever a millisecond ticked between the two
+   `Date.now()` calls. (`4f6d384`)
+
+Also fixed along the way: the HTTP capability scope rejected ported URLs
+(`http://**` does not match `:11434`), `system_stats` blocked an async-runtime
+worker with a sleep, and Vite's watcher hit EBUSY on the Rust target dir.
+(`f67f485`)
+
+### Deviation 1 — Spike 1 folded into the real app rather than a throwaway
+
+The spike existed to prove `tauri-plugin-http` streams before we committed to it.
+It was folded into the real app's verification instead, on the reasoning that
+`appFetch` is the right abstraction either way: if plugin-http failed, only its
+internals would change.
+
+**That reasoning held, and the fallback it named is exactly what shipped.**
+plugin-http *did* stream fine — but it turned out to be unusable for a different
+reason (it forces an `Origin` header Ollama rejects, see bug 1 above), and the
+swap to a Rust command streaming over a `tauri::ipc::Channel` cost zero call-site
+churn, precisely as predicted.
+
+The lesson cuts the other way, though: a throwaway spike would **not** have caught
+this. The bug only appears in a *release* build, and a spike scaffold runs in dev.
+The thing that caught it was running the Definition of Done against the shipped
+binary. That is the check worth keeping.
 
 ### Deviation 2 — Spike 2 deferred to the M3 plan
 
