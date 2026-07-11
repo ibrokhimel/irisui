@@ -125,6 +125,7 @@ describe('studioStore', () => {
 })
 
 it('concurrent first listPrompts calls never duplicate starters', async () => {
+  for (const p of await listPrompts()) await deletePrompt(p.id)
   const [a, b] = await Promise.all([listPrompts(), listPrompts()])
   expect(a.length).toBe(4)
   expect(b.length).toBe(4)
