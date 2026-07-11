@@ -1,5 +1,16 @@
-import { describe, expect, it } from 'vitest'
-import { cpuUtilBetween, parseNvidiaSmi } from '../../scripts/systemStatsPlugin'
+import { describe, expect, it, vi } from 'vitest'
+import { createSnapshotCache, cpuUtilBetween, parseNvidiaSmi } from '../../scripts/systemStatsPlugin'
+
+/** A promise plus its resolve/reject, for controlling settlement from the test. */
+function deferred<T>() {
+  let resolve!: (value: T) => void
+  let reject!: (reason?: unknown) => void
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res
+    reject = rej
+  })
+  return { promise, resolve, reject }
+}
 
 describe('parseNvidiaSmi', () => {
   it('parses a nounits CSV line', () => {
@@ -37,5 +48,64 @@ describe('cpuUtilBetween', () => {
   it('clamps into 0..100', () => {
     expect(cpuUtilBetween([cpu(0, 100)], [cpu(0, 200)])).toBe(0)
     expect(cpuUtilBetween([cpu(0, 100)], [cpu(500, 100)])).toBe(100)
+  })
+})
+
+describe('createSnapshotCache', () => {
+  it('returns the cached value without recollecting within the TTL', async () => {
+    let time = 0
+    let calls = 0
+    const collect = vi.fn(async () => { calls++; return `v${calls}` })
+    const getSnapshot = createSnapshotCache(collect, 1000, () => time)
+
+    const first = await getSnapshot()
+    time += 500 // still inside the 1000ms TTL
+    const second = await getSnapshot()
+
+    expect(collect).toHaveBeenCalledTimes(1)
+    expect(first).toBe('v1')
+    expect(second).toBe('v1')
+  })
+
+  it('shares a single in-flight collection across concurrent callers', async () => {
+    const d = deferred<string>()
+    const collect = vi.fn(() => d.promise)
+    const getSnapshot = createSnapshotCache(collect, 1000)
+
+    const calls = [getSnapshot(), getSnapshot(), getSnapshot(), getSnapshot()]
+    d.resolve('shared')
+    const results = await Promise.all(calls)
+
+    expect(collect).toHaveBeenCalledTimes(1)
+    expect(results).toEqual(['shared', 'shared', 'shared', 'shared'])
+  })
+
+  it('collects a fresh value after the TTL elapses', async () => {
+    let time = 0
+    let calls = 0
+    const collect = vi.fn(async () => { calls++; return `v${calls}` })
+    const getSnapshot = createSnapshotCache(collect, 1000, () => time)
+
+    const first = await getSnapshot()
+    time += 1000 // at the TTL boundary: `now() - at < ttlMs` must be false
+    const second = await getSnapshot()
+
+    expect(collect).toHaveBeenCalledTimes(2)
+    expect(first).toBe('v1')
+    expect(second).toBe('v2')
+  })
+
+  it('clears the in-flight state on rejection so the next call retries', async () => {
+    let attempt = 0
+    const collect = vi.fn(async () => {
+      attempt++
+      if (attempt === 1) throw new Error('boom')
+      return 'recovered'
+    })
+    const getSnapshot = createSnapshotCache(collect, 1000)
+
+    await expect(getSnapshot()).rejects.toThrow('boom')
+    await expect(getSnapshot()).resolves.toBe('recovered')
+    expect(collect).toHaveBeenCalledTimes(2)
   })
 })

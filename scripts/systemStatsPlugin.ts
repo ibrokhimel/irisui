@@ -82,8 +82,6 @@ async function queryDisk(): Promise<{ freeBytes: number; totalBytes: number } | 
 // shared across all requests. CPU % needs two samples, so the previous call's
 // sample is kept between snapshots.
 let lastCpuSample = cpuTimes()
-let cached: { at: number; body: string } | null = null
-let inflight: Promise<string> | null = null
 
 async function collect(): Promise<string> {
   const [gpu, disk] = await Promise.all([queryGpu(), queryDisk()])
@@ -98,16 +96,38 @@ async function collect(): Promise<string> {
   return JSON.stringify(snapshot)
 }
 
-async function getSnapshot(): Promise<string> {
-  if (cached && Date.now() - cached.at < 1000) return cached.body
-  inflight ??= collect()
-    .then((body) => {
-      cached = { at: Date.now(), body }
-      return body
-    })
-    .finally(() => { inflight = null })
-  return inflight
+/**
+ * Wraps `collect` so at most one collection runs per `ttlMs` window, no
+ * matter how many callers ask concurrently.
+ *
+ * - A call within `ttlMs` of the last successful collection returns the
+ *   cached value without invoking `collect` again.
+ * - Calls made while a collection is in flight share that single promise
+ *   (`collect` runs once, not once per caller).
+ * - A rejected collection clears the in-flight state so the next call
+ *   retries instead of being stuck on a poisoned promise forever.
+ */
+export function createSnapshotCache<T>(
+  collect: () => Promise<T>,
+  ttlMs: number,
+  now: () => number = Date.now,
+): () => Promise<T> {
+  let cached: { at: number; value: T } | null = null
+  let inflight: Promise<T> | null = null
+
+  return function getSnapshot(): Promise<T> {
+    if (cached && now() - cached.at < ttlMs) return Promise.resolve(cached.value)
+    inflight ??= collect()
+      .then((value) => {
+        cached = { at: now(), value }
+        return value
+      })
+      .finally(() => { inflight = null })
+    return inflight
+  }
 }
+
+const getSnapshot = createSnapshotCache(collect, 1000)
 
 function middleware(req: IncomingMessage, res: ServerResponse, next: () => void): void {
   if (!req.url?.startsWith('/api/system')) return next()
