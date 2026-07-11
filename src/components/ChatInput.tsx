@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
+import { AnimatePresence, m } from 'motion/react'
 import { ArrowUp, ChevronDown, SlidersHorizontal, Square } from 'lucide-react'
+import { SPRING, TAP } from '../lib/motion'
 import type { Effort, OllamaModel, OllamaStatus } from '../types'
 import { EFFORT_OPTIONS, TEMP_MAX, TEMP_MIN, TEMP_STEP } from '../constants'
 
@@ -114,14 +116,22 @@ export function ChatInput({
               </button>
 
               {controlsOpen && (
-                <>
-                  <button
-                    className="fixed inset-0 z-10 cursor-default"
-                    aria-hidden="true"
-                    tabIndex={-1}
-                    onClick={() => setControlsOpen(false)}
-                  />
-                  <div className="absolute bottom-full left-0 z-20 mb-2 w-64 rounded-xl border border-line bg-panel p-3 shadow-xl">
+                <button
+                  className="fixed inset-0 z-10 cursor-default"
+                  aria-hidden="true"
+                  tabIndex={-1}
+                  onClick={() => setControlsOpen(false)}
+                />
+              )}
+              <AnimatePresence>
+              {controlsOpen && (
+                  <m.div
+                    initial={{ opacity: 0, scale: 0.95, y: 6 }}
+                    animate={{ opacity: 1, scale: 1, y: 0 }}
+                    exit={{ opacity: 0, scale: 0.97, y: 4 }}
+                    transition={{ duration: 0.14, ease: 'easeOut' }}
+                    className="absolute bottom-full left-0 z-20 mb-2 w-64 origin-bottom-left rounded-xl border border-line bg-panel p-3 shadow-xl"
+                  >
                     <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted">
                       Effort
                     </p>
@@ -162,9 +172,9 @@ export function ChatInput({
                       aria-label="Temperature"
                       className="h-1 w-full cursor-pointer accent-[var(--color-iris)]"
                     />
-                  </div>
-                </>
+                  </m.div>
               )}
+              </AnimatePresence>
             </div>
 
             {/* Right cluster: model picker + send */}
@@ -194,22 +204,29 @@ export function ChatInput({
               </div>
 
               {isStreaming ? (
-                <button
+                <m.button
                   onClick={onStop}
                   aria-label="Stop generating"
-                  className="flex h-9 w-9 items-center justify-center rounded-xl border border-line bg-panel text-fg transition hover:border-rose-500/50 hover:text-rose-200"
+                  initial={{ scale: 0.8, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  whileTap={TAP}
+                  transition={SPRING}
+                  className="flex h-9 w-9 items-center justify-center rounded-xl border border-line bg-panel text-fg transition-colors hover:border-rose-500/50 hover:text-rose-200"
                 >
                   <Square className="h-3.5 w-3.5 fill-current" />
-                </button>
+                </m.button>
               ) : (
-                <button
+                <m.button
                   onClick={onSend}
                   disabled={sendDisabled}
                   aria-label="Send message"
-                  className="btn-primary flex h-9 w-9 items-center justify-center rounded-xl shadow-sm transition"
+                  whileTap={TAP}
+                  whileHover={sendDisabled ? undefined : { scale: 1.05 }}
+                  transition={SPRING}
+                  className="btn-primary flex h-9 w-9 items-center justify-center rounded-xl shadow-sm"
                 >
                   <ArrowUp className="h-[18px] w-[18px]" />
-                </button>
+                </m.button>
               )}
             </div>
           </div>

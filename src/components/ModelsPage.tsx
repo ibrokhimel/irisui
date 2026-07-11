@@ -1,5 +1,7 @@
 import { useMemo, useState, type ReactNode } from 'react'
+import { AnimatePresence, m } from 'motion/react'
 import { Boxes, Download, RefreshCw, Search, X } from 'lucide-react'
+import { SPRING } from '../lib/motion'
 import type { OllamaModel, OllamaStatus } from '../types'
 import { deleteModel } from '../lib/ollama'
 import type { ModelPull } from '../hooks/useModelPull'
@@ -170,7 +172,16 @@ export function ModelsPage({
             </div>
           )}
           {pull.error && <p className="mt-3 text-sm text-rose-300">⚠️ {pull.error}</p>}
-          {pull.done && <p className="mt-3 text-sm text-emerald-400">✓ Installed {pull.done}.</p>}
+          {pull.done && (
+            <m.p
+              initial={{ opacity: 0, y: 8, scale: 0.97 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              transition={SPRING}
+              className="mt-3 text-sm text-emerald-400"
+            >
+              ✓ Installed {pull.done}.
+            </m.p>
+          )}
         </section>
 
         <HardwarePanel
@@ -306,18 +317,28 @@ export function ModelsPage({
             <Empty>No installed models match your search.</Empty>
           ) : (
             <div className="space-y-2">
-              {filtered.map((m) => (
-                <ModelRow
-                  key={m.name}
-                  model={m}
-                  isDefault={prefs.defaultModel === m.name}
-                  isFavorite={prefs.favorites.includes(m.name)}
-                  onToggleFavorite={onToggleFavorite}
-                  onSetDefault={onSetDefault}
-                  onDelete={setToDelete}
-                  fit={ramGb && m.size ? modelFit(m.size, ramGb) : null}
-                />
-              ))}
+              <AnimatePresence mode="popLayout" initial={false}>
+                {filtered.map((im) => (
+                  <m.div
+                    key={im.name}
+                    layout
+                    initial={{ opacity: 0, y: 12 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, scale: 0.95 }}
+                    transition={SPRING}
+                  >
+                    <ModelRow
+                      model={im}
+                      isDefault={prefs.defaultModel === im.name}
+                      isFavorite={prefs.favorites.includes(im.name)}
+                      onToggleFavorite={onToggleFavorite}
+                      onSetDefault={onSetDefault}
+                      onDelete={setToDelete}
+                      fit={ramGb && im.size ? modelFit(im.size, ramGb) : null}
+                    />
+                  </m.div>
+                ))}
+              </AnimatePresence>
             </div>
           )}
         </section>

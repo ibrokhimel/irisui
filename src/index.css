@@ -243,8 +243,42 @@
   border-radius: 10px;
 }
 
+/* ── Motion ─────────────────────────────────────────────────────────── */
+
+/* Theme switch cross-fade: applyTheme() stamps this class for ~350ms so the
+   whole surface glides between palettes instead of snapping. */
+.theme-fade,
+.theme-fade *,
+.theme-fade *::before,
+.theme-fade *::after {
+  transition:
+    background-color 300ms ease,
+    border-color 300ms ease,
+    color 300ms ease !important;
+}
+
+/* Aperture at work: slow rotation on the assistant mark while streaming. */
+@keyframes iris-rotate {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+.anim-aperture {
+  animation: iris-rotate 6s linear infinite;
+}
+
+/* Reduced motion is a real code path: kill every keyframe and transition.
+   (Springs collapse via MotionConfig; imperative paths are gated in JS.) */
 @media (prefers-reduced-motion: reduce) {
-  .stream-caret::after {
-    animation: none;
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }

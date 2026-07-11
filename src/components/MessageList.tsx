@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react'
+import { useReducedMotion } from 'motion/react'
 import type { ChatMessage } from '../types'
 import { Message } from './Message'
 
@@ -12,10 +13,11 @@ export function MessageList({
   onRegenerate: () => void
 }) {
   const bottomRef = useRef<HTMLDivElement>(null)
+  const reduced = useReducedMotion()
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
-  }, [messages, isStreaming])
+    bottomRef.current?.scrollIntoView({ behavior: reduced ? 'auto' : 'smooth', block: 'end' })
+  }, [messages, isStreaming, reduced])
 
   const lastId = messages[messages.length - 1]?.id
 

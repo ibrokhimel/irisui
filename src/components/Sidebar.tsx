@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { AnimatePresence, m } from 'motion/react'
 import {
   Activity,
   Boxes,
@@ -13,6 +14,7 @@ import {
   X,
 } from 'lucide-react'
 import type { ConversationMeta } from '../lib/store'
+import { SPRING, SPRING_SOFT } from '../lib/motion'
 import { IrisMark } from './IrisMark'
 
 const DAY = 86_400_000
@@ -95,13 +97,21 @@ export function Sidebar({
   }
 
   return (
-    <aside
+    <m.aside
+      initial={false}
+      animate={{ width: open ? 288 : 0 }}
+      transition={SPRING_SOFT}
       className={
-        'shrink-0 overflow-hidden bg-panel/70 backdrop-blur-sm transition-[width] duration-200 ease-out ' +
-        (open ? 'w-72 border-r border-line' : 'w-0')
+        'shrink-0 overflow-hidden bg-panel/70 backdrop-blur-sm ' +
+        (open ? 'border-r border-line' : '')
       }
     >
-      <div className="flex h-full w-72 flex-col">
+      <m.div
+        initial={false}
+        animate={{ opacity: open ? 1 : 0 }}
+        transition={{ duration: 0.15 }}
+        className="flex h-full w-72 flex-col"
+      >
         {/* Brand */}
         <div className="flex items-center gap-3 px-4 py-4">
           <IrisMark className="h-7 w-7 text-fg" />
@@ -181,9 +191,18 @@ export function Sidebar({
                 <p className="px-2 pb-1 text-[11px] font-medium uppercase tracking-wider text-muted/70">
                   {group.label}
                 </p>
-                {group.items.map((m) => (
-                  <div key={m.id} className="group relative">
-                    {renamingId === m.id ? (
+                <AnimatePresence mode="popLayout" initial={false}>
+                {group.items.map((c) => (
+                  <m.div
+                    key={c.id}
+                    layout
+                    initial={{ opacity: 0, y: 12 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, scale: 0.92 }}
+                    transition={SPRING}
+                    className="group relative"
+                  >
+                    {renamingId === c.id ? (
                       <input
                         ref={renameRef}
                         value={draft}
@@ -203,48 +222,64 @@ export function Sidebar({
                       />
                     ) : (
                       <button
-                        onClick={() => onSelectChat(m.id)}
+                        onClick={() => onSelectChat(c.id)}
                         className={
-                          'flex w-full items-center rounded-lg py-2 pl-2.5 pr-8 text-left text-sm transition ' +
-                          (m.id === currentId
-                            ? 'bg-panel2 text-fg'
+                          'relative flex w-full items-center rounded-lg py-2 pl-2.5 pr-8 text-left text-sm transition-colors ' +
+                          (c.id === currentId
+                            ? 'text-fg'
                             : 'text-muted hover:bg-panel2/60 hover:text-fg')
                         }
                       >
-                        <span className="truncate">{m.title}</span>
+                        {/* One highlight that glides between rows on selection. */}
+                        {c.id === currentId && (
+                          <m.span
+                            layoutId="active-chat"
+                            className="absolute inset-0 rounded-lg bg-panel2"
+                            transition={SPRING}
+                          />
+                        )}
+                        <span className="relative truncate">{c.title}</span>
                       </button>
                     )}
 
-                    {renamingId !== m.id && (
+                    {renamingId !== c.id && (
                       <button
-                        onClick={() => setMenuId(menuId === m.id ? null : m.id)}
+                        onClick={() => setMenuId(menuId === c.id ? null : c.id)}
                         aria-label="Chat options"
                         className={
                           'absolute right-1 top-1/2 -translate-y-1/2 rounded-md p-1 text-muted transition hover:bg-panel hover:text-fg ' +
-                          (menuId === m.id ? 'opacity-100' : 'opacity-0 group-hover:opacity-100')
+                          (menuId === c.id ? 'opacity-100' : 'opacity-0 group-hover:opacity-100')
                         }
                       >
                         <MoreHorizontal className="h-4 w-4" />
                       </button>
                     )}
 
-                    {menuId === m.id && (
-                      <>
-                        <button
-                          className="fixed inset-0 z-10 cursor-default"
-                          aria-hidden="true"
-                          tabIndex={-1}
-                          onClick={() => setMenuId(null)}
-                        />
-                        <div className="absolute right-1 top-full z-20 mt-1 w-48 overflow-hidden rounded-xl border border-line bg-panel py-1 shadow-xl">
-                          <MenuItem icon={<Pencil className="h-4 w-4" />} onClick={() => startRename(m)}>
+                    {menuId === c.id && (
+                      <button
+                        className="fixed inset-0 z-10 cursor-default"
+                        aria-hidden="true"
+                        tabIndex={-1}
+                        onClick={() => setMenuId(null)}
+                      />
+                    )}
+                    <AnimatePresence>
+                    {menuId === c.id && (
+                        <m.div
+                          initial={{ opacity: 0, scale: 0.95, y: -4 }}
+                          animate={{ opacity: 1, scale: 1, y: 0 }}
+                          exit={{ opacity: 0, scale: 0.97, y: -2 }}
+                          transition={{ duration: 0.12, ease: 'easeOut' }}
+                          className="absolute right-1 top-full z-20 mt-1 w-48 origin-top-right overflow-hidden rounded-xl border border-line bg-panel py-1 shadow-xl"
+                        >
+                          <MenuItem icon={<Pencil className="h-4 w-4" />} onClick={() => startRename(c)}>
                             Rename
                           </MenuItem>
                           <MenuItem
                             icon={<Download className="h-4 w-4" />}
                             onClick={() => {
                               setMenuId(null)
-                              onExport(m.id, 'md')
+                              onExport(c.id, 'md')
                             }}
                           >
                             Export as Markdown
@@ -253,7 +288,7 @@ export function Sidebar({
                             icon={<Download className="h-4 w-4" />}
                             onClick={() => {
                               setMenuId(null)
-                              onExport(m.id, 'json')
+                              onExport(c.id, 'json')
                             }}
                           >
                             Export as JSON
@@ -263,16 +298,17 @@ export function Sidebar({
                             danger
                             onClick={() => {
                               setMenuId(null)
-                              onDeleteChat(m.id)
+                              onDeleteChat(c.id)
                             }}
                           >
                             Delete
                           </MenuItem>
-                        </div>
-                      </>
+                        </m.div>
                     )}
-                  </div>
+                    </AnimatePresence>
+                  </m.div>
                 ))}
+                </AnimatePresence>
               </div>
             ))
           )}
@@ -288,8 +324,8 @@ export function Sidebar({
             Settings
           </button>
         </div>
-      </div>
-    </aside>
+      </m.div>
+    </m.aside>
   )
 }
 

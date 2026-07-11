@@ -1,4 +1,6 @@
 import { useMemo, useState } from 'react'
+import { AnimatePresence, LazyMotion, MotionConfig, m } from 'motion/react'
+import { SPRING } from './lib/motion'
 import { Sidebar } from './components/Sidebar'
 import { TopBar } from './components/TopBar'
 import { HomeScreen } from './components/HomeScreen'
@@ -61,7 +63,12 @@ export default function App() {
     onSelectModel: chat.setSelectedModel,
   }
 
+  // Keyed view swap: chat home / conversation / models / stats cross-fade.
+  const viewKey = view === 'chat' ? (empty ? 'chat-home' : 'chat-thread') : view
+
   return (
+    <MotionConfig reducedMotion="user" transition={SPRING}>
+    <LazyMotion strict features={() => import('./lib/motionFeatures').then((mod) => mod.default)}>
     <div className="flex h-screen w-screen overflow-hidden text-fg">
       <Sidebar
         open={sidebarOpen}
@@ -90,34 +97,45 @@ export default function App() {
           showTitle={view === 'models' || view === 'stats' || !empty}
         />
 
-        {view === 'models' ? (
-          <ModelsPage
-            models={chat.models}
-            status={chat.status}
-            onRefresh={chat.refresh}
-            prefs={prefs}
-            onSetDefault={setDefaultModel}
-            onToggleFavorite={toggleFavorite}
-            pull={pull}
-          />
-        ) : view === 'stats' ? (
-          <StatsPage />
-        ) : empty ? (
-          <HomeScreen
-            status={chat.status}
-            onPickPrompt={chat.setInput}
-            composer={<ChatInput variant="hero" {...composerProps} />}
-          />
-        ) : (
-          <>
-            <MessageList
-              messages={chat.messages}
-              isStreaming={chat.isStreaming}
-              onRegenerate={chat.regenerate}
-            />
-            <ChatInput variant="docked" {...composerProps} />
-          </>
-        )}
+        <AnimatePresence mode="wait" initial={false}>
+          <m.div
+            key={viewKey}
+            className="flex min-h-0 flex-1 flex-col"
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -6 }}
+            transition={{ duration: 0.16, ease: 'easeOut' }}
+          >
+            {view === 'models' ? (
+              <ModelsPage
+                models={chat.models}
+                status={chat.status}
+                onRefresh={chat.refresh}
+                prefs={prefs}
+                onSetDefault={setDefaultModel}
+                onToggleFavorite={toggleFavorite}
+                pull={pull}
+              />
+            ) : view === 'stats' ? (
+              <StatsPage />
+            ) : empty ? (
+              <HomeScreen
+                status={chat.status}
+                onPickPrompt={chat.setInput}
+                composer={<ChatInput variant="hero" {...composerProps} />}
+              />
+            ) : (
+              <>
+                <MessageList
+                  messages={chat.messages}
+                  isStreaming={chat.isStreaming}
+                  onRegenerate={chat.regenerate}
+                />
+                <ChatInput variant="docked" {...composerProps} />
+              </>
+            )}
+          </m.div>
+        </AnimatePresence>
       </main>
 
       <SettingsModal
@@ -129,5 +147,7 @@ export default function App() {
         onReset={reset}
       />
     </div>
+    </LazyMotion>
+    </MotionConfig>
   )
 }

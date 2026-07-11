@@ -1,4 +1,5 @@
-import { useEffect, useState, type ReactElement } from 'react'
+import { useEffect, useState, type ReactElement, type ReactNode } from 'react'
+import { m, useReducedMotion } from 'motion/react'
 import { Activity, Trash2 } from 'lucide-react'
 import {
   Bar, BarChart, CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis,
@@ -6,6 +7,8 @@ import {
 import type { GenerationStat } from '../lib/stats'
 import { summarizeByModel } from '../lib/stats'
 import { clearStats, listStats } from '../lib/statsStore'
+import { fadeUp, stagger } from '../lib/motion'
+import { useCountUp } from '../hooks/useCountUp'
 import { ConfirmDialog } from './ConfirmDialog'
 
 const AXIS = { fill: 'var(--color-muted)', fontSize: 11 }
@@ -22,6 +25,8 @@ const ACTIVE_DOT = { r: 4, stroke: 'var(--color-panel)', strokeWidth: 2 }
 export function StatsPage() {
   const [stats, setStats] = useState<GenerationStat[]>([])
   const [confirmOpen, setConfirmOpen] = useState(false)
+  const reduced = useReducedMotion()
+  const chartAnim = { isAnimationActive: !reduced, animationDuration: 600 }
 
   useEffect(() => {
     void listStats().then(setStats).catch(() => setStats([]))
@@ -61,12 +66,12 @@ export function StatsPage() {
           <>
             {/* Summary cards */}
             <div className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-3">
-              <Card label="Generations" value={String(stats.length)} />
-              <Card label="Most used" value={summaries[0]?.model ?? '—'} />
-              <Card label="Fastest" value={fastest ? `${fastest.model} · ${fastest.avgTokensPerSec.toFixed(1)} tok/s` : '—'} />
+              <Card index={0} label="Generations" value={<CountUpValue target={stats.length} />} />
+              <Card index={1} label="Most used" value={summaries[0]?.model ?? '—'} />
+              <Card index={2} label="Fastest" value={fastest ? `${fastest.model} · ${fastest.avgTokensPerSec.toFixed(1)} tok/s` : '—'} />
             </div>
 
-            <ChartPanel title="Tokens/sec over time">
+            <ChartPanel index={0} title="Tokens/sec over time">
               <LineChart data={timeline}>
                 <CartesianGrid stroke="var(--color-line)" strokeDasharray="3 3" />
                 <XAxis dataKey="n" tick={AXIS} stroke="var(--color-line)" />
@@ -79,22 +84,22 @@ export function StatsPage() {
                   strokeWidth={2}
                   dot={false}
                   activeDot={{ ...ACTIVE_DOT, fill: 'var(--color-iris)' }}
-                  isAnimationActive={false}
+                  {...chartAnim}
                 />
               </LineChart>
             </ChartPanel>
 
-            <ChartPanel title="Average speed per model (tok/s)">
+            <ChartPanel index={1} title="Average speed per model (tok/s)">
               <BarChart data={summaries.map((s) => ({ model: s.model.slice(0, 18), avg: Number(s.avgTokensPerSec.toFixed(1)) }))}>
                 <CartesianGrid stroke="var(--color-line)" strokeDasharray="3 3" />
                 <XAxis dataKey="model" tick={AXIS} stroke="var(--color-line)" />
                 <YAxis tick={AXIS} stroke="var(--color-line)" width={36} />
                 <Tooltip contentStyle={TOOLTIP_STYLE} cursor={BAR_CURSOR} />
-                <Bar dataKey="avg" fill="var(--color-iris)" radius={[6, 6, 0, 0]} isAnimationActive={false} />
+                <Bar dataKey="avg" fill="var(--color-iris)" radius={[6, 6, 0, 0]} {...chartAnim} />
               </BarChart>
             </ChartPanel>
 
-            <ChartPanel title="Response time (s)">
+            <ChartPanel index={2} title="Response time (s)">
               <LineChart data={timeline}>
                 <CartesianGrid stroke="var(--color-line)" strokeDasharray="3 3" />
                 <XAxis dataKey="n" tick={AXIS} stroke="var(--color-line)" />
@@ -107,7 +112,7 @@ export function StatsPage() {
                   strokeWidth={2}
                   dot={false}
                   activeDot={{ ...ACTIVE_DOT, fill: 'var(--color-iris-strong)' }}
-                  isAnimationActive={false}
+                  {...chartAnim}
                 />
               </LineChart>
             </ChartPanel>
@@ -162,22 +167,38 @@ export function StatsPage() {
   )
 }
 
-function Card({ label, value }: { label: string; value: string }) {
+function CountUpValue({ target }: { target: number }) {
+  return <>{useCountUp(target)}</>
+}
+
+function Card({ index, label, value }: { index: number; label: string; value: ReactNode }) {
   return (
-    <div className="rounded-xl border border-line bg-panel/50 px-4 py-3">
+    <m.div
+      className="rounded-xl border border-line bg-panel/50 px-4 py-3"
+      variants={fadeUp}
+      initial="hidden"
+      animate="show"
+      transition={stagger(index)}
+    >
       <p className="text-[11px] font-medium uppercase tracking-wider text-muted">{label}</p>
       <p className="mt-1 truncate text-sm font-semibold text-fg">{value}</p>
-    </div>
+    </m.div>
   )
 }
 
-function ChartPanel({ title, children }: { title: string; children: ReactElement }) {
+function ChartPanel({ index, title, children }: { index: number; title: string; children: ReactElement }) {
   return (
-    <section className="mb-4 rounded-xl border border-line bg-panel/40 p-4">
+    <m.section
+      className="mb-4 rounded-xl border border-line bg-panel/40 p-4"
+      variants={fadeUp}
+      initial="hidden"
+      animate="show"
+      transition={stagger(index, 0.12)}
+    >
       <h2 className="mb-3 text-sm font-semibold text-fg">{title}</h2>
       <div className="h-52">
         <ResponsiveContainer width="100%" height="100%">{children}</ResponsiveContainer>
       </div>
-    </section>
+    </m.section>
   )
 }

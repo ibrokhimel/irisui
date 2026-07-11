@@ -1,6 +1,8 @@
 import type { ReactNode } from 'react'
+import { m } from 'motion/react'
 import { Code2, FileText, GraduationCap, Pencil, Sparkles, Terminal, WifiOff } from 'lucide-react'
 import type { OllamaStatus } from '../types'
+import { LIFT, TAP, fadeUp, stagger } from '../lib/motion'
 import { IrisMark } from './IrisMark'
 
 const CHIPS = [
@@ -18,6 +20,10 @@ function greeting(): string {
   return 'Good evening'
 }
 
+/**
+ * Home hero with the entrance cascade: the aperture mark draws itself,
+ * the greeting and composer rise, then the prompt chips follow one by one.
+ */
 export function HomeScreen({
   status,
   onPickPrompt,
@@ -29,24 +35,44 @@ export function HomeScreen({
 }) {
   return (
     <div className="flex flex-1 flex-col items-center justify-center overflow-y-auto px-4 pb-16">
-      <div className="mb-8 flex items-center justify-center gap-3.5">
-        <IrisMark className="h-9 w-9 text-iris" />
+      <m.div
+        className="mb-8 flex items-center justify-center gap-3.5"
+        variants={fadeUp}
+        initial="hidden"
+        animate="show"
+        transition={stagger(0)}
+      >
+        <IrisMark draw className="h-9 w-9 text-iris" />
         <h1 className="font-serif text-[34px] font-normal tracking-tight text-fg">{greeting()}</h1>
-      </div>
+      </m.div>
 
-      <div className="w-full max-w-2xl">{composer}</div>
+      <m.div
+        className="w-full max-w-2xl"
+        variants={fadeUp}
+        initial="hidden"
+        animate="show"
+        transition={stagger(1)}
+      >
+        {composer}
+      </m.div>
 
       {status === 'online' && (
         <div className="mt-5 flex flex-wrap items-center justify-center gap-2">
-          {CHIPS.map(({ label, icon: Icon, prompt }) => (
-            <button
+          {CHIPS.map(({ label, icon: Icon, prompt }, i) => (
+            <m.button
               key={label}
               onClick={() => onPickPrompt(prompt)}
-              className="flex items-center gap-2 rounded-xl border border-line bg-panel/40 px-3.5 py-2 text-sm text-muted transition hover:border-iris/40 hover:text-fg"
+              className="flex items-center gap-2 rounded-xl border border-line bg-panel/40 px-3.5 py-2 text-sm text-muted transition-colors hover:border-iris/40 hover:text-fg"
+              variants={fadeUp}
+              initial="hidden"
+              animate="show"
+              transition={stagger(i, 0.18)}
+              whileHover={LIFT}
+              whileTap={TAP}
             >
               <Icon className="h-4 w-4" />
               {label}
-            </button>
+            </m.button>
           ))}
         </div>
       )}
@@ -73,13 +99,19 @@ export function HomeScreen({
 
 function Notice({ icon, title, children }: { icon: ReactNode; title: string; children: ReactNode }) {
   return (
-    <div className="mt-6 w-full max-w-md rounded-2xl border border-line bg-panel/50 p-5 text-left">
+    <m.div
+      className="mt-6 w-full max-w-md rounded-2xl border border-line bg-panel/50 p-5 text-left"
+      variants={fadeUp}
+      initial="hidden"
+      animate="show"
+      transition={stagger(2)}
+    >
       <div className="mb-2 flex items-center gap-2 text-sm font-medium text-fg">
         {icon}
         {title}
       </div>
       <div className="text-sm">{children}</div>
-    </div>
+    </m.div>
   )
 }
 

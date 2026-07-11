@@ -1,7 +1,9 @@
 import { useEffect } from 'react'
+import { AnimatePresence, m } from 'motion/react'
 import { Check, RotateCcw, X } from 'lucide-react'
 import type { ThemePreset, ThemeSettings } from '../theme'
 import { ACCENTS, PRESETS, isValidHex } from '../theme'
+import { SPRING } from '../lib/motion'
 
 export function SettingsModal({
   open,
@@ -27,14 +29,19 @@ export function SettingsModal({
     return () => window.removeEventListener('keydown', onKey)
   }, [open, onClose])
 
-  if (!open) return null
-
   return (
-    <div
+    <AnimatePresence>
+    {open && (
+    <m.div
+      key="settings-modal"
       className="fixed inset-0 z-50 flex items-center justify-center p-4"
       role="dialog"
       aria-modal="true"
       aria-label="Settings"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.15 }}
     >
       <button
         className="absolute inset-0 bg-black/40 backdrop-blur-sm"
@@ -42,7 +49,13 @@ export function SettingsModal({
         onClick={onClose}
       />
 
-      <div className="relative w-full max-w-md overflow-hidden rounded-2xl border border-line bg-panel shadow-2xl">
+      <m.div
+        className="relative w-full max-w-md overflow-hidden rounded-2xl border border-line bg-panel shadow-2xl"
+        initial={{ opacity: 0, scale: 0.95, y: 12 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.97, y: 8 }}
+        transition={SPRING}
+      >
         <div className="flex items-center justify-between border-b border-line px-5 py-4">
           <h2 className="text-base font-semibold text-fg">Settings</h2>
           <button
@@ -136,7 +149,9 @@ export function SettingsModal({
             </button>
           </div>
         </div>
-      </div>
-    </div>
+      </m.div>
+    </m.div>
+    )}
+    </AnimatePresence>
   )
 }
