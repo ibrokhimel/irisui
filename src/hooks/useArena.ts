@@ -115,9 +115,14 @@ export function useArena(models: OllamaModel[]) {
               conversationId: ARENA_CONVERSATION_ID,
               model,
               startedAt,
-              ttftMs: firstTokenAt ? firstTokenAt - t0 : 0,
-              totalMs: performance.now() - t0,
-              meta,
+              usage: {
+                promptTokens: meta.promptTokens,
+                completionTokens: meta.completionTokens,
+                ttftMs: firstTokenAt ? firstTokenAt - t0 : 0,
+                totalMs: performance.now() - t0,
+                serverEvalNs: meta.evalDurationNs,
+                loadDurationNs: meta.loadDurationNs,
+              },
             })
             stat = toMessageStat(s)
             void addStat(s)

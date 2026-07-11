@@ -18,3 +18,6 @@ ruvector.db
 
 # Tauri build output
 src-tauri/target/
+
+# Local API keys held by the dev server. Never commit.
+.keys.local.json

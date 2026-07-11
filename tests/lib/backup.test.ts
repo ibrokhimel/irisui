@@ -75,8 +75,8 @@ describe('exportAll', () => {
     const kb = await createKb('Docs', 'all-minilm')
     await addChunks(kb.id, 'a.txt', [{ id: 'ch1', kbId: kb.id, fileName: 'a.txt', index: 0, text: 't', vector: [1, 2] }])
 
-    const meta = { promptTokens: 1, completionTokens: 5, evalDurationNs: 1e9, totalDurationNs: 1e9, loadDurationNs: 0 }
-    await addStat(computeStat({ conversationId: 'c1', model: 'm', startedAt: 1, ttftMs: 10, totalMs: 100, meta }))
+    const usage = { promptTokens: 1, completionTokens: 5, ttftMs: 10, totalMs: 100, serverEvalNs: 1e9, loadDurationNs: 0 }
+    await addStat(computeStat({ conversationId: 'c1', model: 'm', startedAt: 1, usage }))
 
     await createPersona({ name: 'Coach', icon: '🧑‍🏫', systemPrompt: 'help' })
     for (const p of await listPrompts()) await deletePrompt(p.id) // clear seeded starters for a clean count

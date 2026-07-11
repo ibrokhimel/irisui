@@ -230,9 +230,14 @@ export function useChat() {
             conversationId: base.id,
             model: base.model,
             startedAt: now,
-            ttftMs: firstTokenAt ? firstTokenAt - t0 : 0,
-            totalMs: performance.now() - t0,
-            meta,
+            usage: {
+              promptTokens: meta.promptTokens,
+              completionTokens: meta.completionTokens,
+              ttftMs: firstTokenAt ? firstTokenAt - t0 : 0,
+              totalMs: performance.now() - t0,
+              serverEvalNs: meta.evalDurationNs,
+              loadDurationNs: meta.loadDurationNs,
+            },
           })
           messageStat = toMessageStat(stat)
           void addStat(stat)

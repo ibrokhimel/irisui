@@ -4,8 +4,8 @@ import { addStat, clearStats, listStats } from '../../src/lib/statsStore'
 import { computeStat } from '../../src/lib/stats'
 import { deleteAllData } from '../../src/lib/backup'
 
-const meta = { promptTokens: 1, completionTokens: 30, evalDurationNs: 1e9, totalDurationNs: 1.2e9, loadDurationNs: 0 }
-const mk = (at: number) => computeStat({ conversationId: 'c', model: 'm', startedAt: at, ttftMs: 50, totalMs: 1200, meta })
+const usage = { promptTokens: 1, completionTokens: 30, ttftMs: 50, totalMs: 1200, serverEvalNs: 1e9, loadDurationNs: 0 }
+const mk = (at: number) => computeStat({ conversationId: 'c', model: 'm', startedAt: at, usage })
 
 describe('statsStore', () => {
   beforeEach(async () => { await clearStats() })
