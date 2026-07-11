@@ -1,11 +1,12 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { AnimatePresence, m } from 'motion/react'
-import { Check, Copy, RefreshCw, StepForward } from 'lucide-react'
+import { Check, Copy, RefreshCw, Square, StepForward, Volume2 } from 'lucide-react'
 import type { ChatMessage, ChatSource } from '../types'
 import { SPRING, fadeUp } from '../lib/motion'
 import { Markdown } from './Markdown'
 import { IrisMark } from './IrisMark'
 import { formatStatLine } from '../lib/stats'
+import { isSpeechSynthesisSupported, speak, stopSpeaking } from '../hooks/useSpeech'
 
 export function Message({
   message,
@@ -21,6 +22,10 @@ export function Message({
   onContinue?: () => void
 }) {
   const [copied, setCopied] = useState(false)
+  const [speaking, setSpeaking] = useState(false)
+  const speakingRef = useRef(false)
+  speakingRef.current = speaking
+  const speechSupported = isSpeechSynthesisSupported()
 
   const copy = async () => {
     try {
@@ -31,6 +36,22 @@ export function Message({
       /* clipboard unavailable */
     }
   }
+
+  const toggleReadAloud = () => {
+    if (speaking) {
+      stopSpeaking()
+      setSpeaking(false)
+    } else {
+      setSpeaking(true)
+      speak(message.content, () => setSpeaking(false))
+    }
+  }
+
+  // Only stop speech on unmount if THIS message was the one speaking —
+  // speechSynthesis is a single global voice shared across all messages.
+  useEffect(() => () => {
+    if (speakingRef.current) stopSpeaking()
+  }, [])
 
   if (message.role === 'user') {
     return (
@@ -87,6 +108,16 @@ export function Message({
               {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
               {copied ? 'Copied' : 'Copy'}
             </button>
+            {speechSupported && (
+              <button
+                onClick={toggleReadAloud}
+                aria-label={speaking ? 'Stop reading aloud' : 'Read aloud'}
+                className="flex items-center gap-1 rounded-md px-2 py-1 text-xs text-muted transition hover:bg-panel2 hover:text-fg"
+              >
+                {speaking ? <Square className="h-3.5 w-3.5" /> : <Volume2 className="h-3.5 w-3.5" />}
+                {speaking ? 'Stop' : 'Read aloud'}
+              </button>
+            )}
             {isLast && onRegenerate && (
               <button
                 onClick={onRegenerate}
