@@ -54,7 +54,18 @@ export function loadPricing(): Record<string, ModelPricing> {
 export function savePriceOverride(ref: string, pricing: ModelPricing): void {
   try {
     const raw = localStorage.getItem(KEY)
-    const current = raw ? (JSON.parse(raw) as Record<string, ModelPricing>) : {}
+    let current: Record<string, ModelPricing> = {}
+    if (raw) {
+      try {
+        const parsed = JSON.parse(raw)
+        if (typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)) {
+          current = parsed as Record<string, ModelPricing>
+        }
+      } catch {
+        // On parse failure or non-object value, fall back to empty object.
+        // This allows the user's correction to persist even if the stored value is corrupt.
+      }
+    }
     current[ref] = pricing
     localStorage.setItem(KEY, JSON.stringify(current))
   } catch {
