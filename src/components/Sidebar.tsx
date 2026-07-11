@@ -368,6 +368,7 @@ export function Sidebar({
             <Settings className="h-4 w-4" />
             Settings
           </button>
+          <p className="px-2 pt-1 text-[11px] text-muted/50">IrisUI v{__APP_VERSION__}</p>
         </div>
       </m.div>
     </m.aside>
