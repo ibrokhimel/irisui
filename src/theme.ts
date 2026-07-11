@@ -80,7 +80,9 @@ export const ACCENTS: AccentSwatch[] = [
   { name: 'Wine', value: '#b8404d' },
 ]
 
-const CUSTOM_TOKEN_MAP = [
+/** Single source of truth for key -> CSS var; consumed by customToVars() and
+ *  by the Settings -> Appearance editor's token lookups. */
+export const CUSTOM_TOKEN_MAP = [
   ['bg', '--color-bg'],
   ['panel', '--color-panel'],
   ['panel2', '--color-panel2'],

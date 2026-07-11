@@ -1,9 +1,16 @@
 import { useState } from 'react'
 import { Check, RotateCcw, SwatchBook } from 'lucide-react'
 import type { CustomThemeVars, ThemePreset, ThemeSettings } from '../theme'
-import { ACCENTS, CUSTOM_TOKEN_LABELS, PRESETS, customToVars, isValidHex } from '../theme'
+import { ACCENTS, CUSTOM_TOKEN_LABELS, CUSTOM_TOKEN_MAP, PRESETS, customToVars, isValidHex } from '../theme'
 
 type ConcretePreset = Exclude<ThemePreset, 'custom'>
+
+// Only a complete 6-digit hex is unambiguous while the user is still typing —
+// the first 3 characters of any 6-digit value are themselves a valid 3-digit
+// shorthand, so auto-committing on 3-digit input would expand/corrupt the
+// field mid-keystroke. Shorthand is accepted only on blur/Enter, where intent
+// is unambiguous.
+const COMPLETE_HEX_RE = /^#?[0-9a-fA-F]{6}$/
 
 function TokenRow({
   label, value, onChange,
@@ -12,17 +19,25 @@ function TokenRow({
   value: string
   onChange: (hex: string) => void
 }) {
-  // Draft state lets the user type through invalid intermediate hex values;
-  // only valid input is committed (same philosophy as the accent picker).
+  // Draft always mirrors exactly what the user typed, so the field never
+  // jumps to a normalized/expanded value mid-typing.
   const [draft, setDraft] = useState<string | null>(null)
-  const commit = (v: string) => {
-    if (isValidHex(v)) {
+
+  const handleTyping = (v: string) => {
+    setDraft(v)
+    if (COMPLETE_HEX_RE.test(v.trim())) {
       onChange(v.startsWith('#') ? v : `#${v}`)
-      setDraft(null)
-    } else {
-      setDraft(v)
     }
   }
+
+  const finalizeDraft = () => {
+    if (draft === null) return
+    if (isValidHex(draft)) {
+      onChange(draft.startsWith('#') ? draft : `#${draft}`)
+    }
+    setDraft(null)
+  }
+
   return (
     <div className="flex items-center justify-between gap-3">
       <span className="text-sm text-fg">{label}</span>
@@ -30,15 +45,21 @@ function TokenRow({
         <input
           type="color"
           value={value}
-          onChange={(e) => commit(e.target.value)}
+          onChange={(e) => {
+            onChange(e.target.value)
+            setDraft(null)
+          }}
           aria-label={`${label} color`}
           className="h-7 w-9 cursor-pointer rounded border border-line bg-transparent p-0.5"
         />
         <input
           type="text"
           value={draft ?? value}
-          onChange={(e) => commit(e.target.value)}
-          onBlur={() => setDraft(null)}
+          onChange={(e) => handleTyping(e.target.value)}
+          onBlur={finalizeDraft}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') finalizeDraft()
+          }}
           spellCheck={false}
           aria-label={`${label} hex value`}
           className="w-24 rounded-lg border border-line bg-panel2 px-2 py-1 font-mono text-xs text-fg outline-none focus:border-iris"
@@ -77,10 +98,7 @@ export function SettingsAppearance({
   const customActive = theme.preset === 'custom'
 
   const tokenValue = (key: keyof CustomThemeVars): string => {
-    const cssVar = {
-      bg: '--color-bg', panel: '--color-panel', panel2: '--color-panel2',
-      line: '--color-line', fg: '--color-fg', muted: '--color-muted',
-    }[key]
+    const cssVar = CUSTOM_TOKEN_MAP.find(([k]) => k === key)?.[1] ?? '--color-bg'
     return resolvedCustom[cssVar]
   }
 
