@@ -9,6 +9,7 @@ import { ChatInput } from './components/ChatInput'
 import { ModelsPage } from './components/ModelsPage'
 import { KnowledgePage } from './components/KnowledgePage'
 import { StudioPage } from './components/StudioPage'
+import { ArenaPage } from './components/ArenaPage'
 import { StatsPage } from './components/StatsPage'
 import { SettingsModal } from './components/SettingsModal'
 import { useChat } from './hooks/useChat'
@@ -28,7 +29,9 @@ export default function App() {
   const { personas, prompts, reload: reloadStudio } = useStudio()
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(true)
-  const [view, setView] = useState<'chat' | 'models' | 'knowledge' | 'studio' | 'stats'>('chat')
+  const [view, setView] = useState<'chat' | 'models' | 'knowledge' | 'studio' | 'arena' | 'stats'>(
+    'chat',
+  )
 
   const empty = chat.messages.length === 0
 
@@ -105,6 +108,7 @@ export default function App() {
         onOpenModels={() => setView('models')}
         onOpenKnowledge={() => setView('knowledge')}
         onOpenStudio={() => setView('studio')}
+        onOpenArena={() => setView('arena')}
         onOpenStats={() => setView('stats')}
         pullActive={pull.pulling}
         pullPercent={pullPercent}
@@ -126,12 +130,19 @@ export default function App() {
                 ? 'Knowledge'
                 : view === 'studio'
                   ? 'Studio'
-                  : view === 'stats'
-                    ? 'Stats'
-                    : chat.title
+                  : view === 'arena'
+                    ? 'Arena'
+                    : view === 'stats'
+                      ? 'Stats'
+                      : chat.title
           }
           showTitle={
-            view === 'models' || view === 'knowledge' || view === 'studio' || view === 'stats' || !empty
+            view === 'models' ||
+            view === 'knowledge' ||
+            view === 'studio' ||
+            view === 'arena' ||
+            view === 'stats' ||
+            !empty
           }
         />
 
@@ -171,6 +182,8 @@ export default function App() {
                 onChatWithPersona={handleChatWithPersona}
                 onUsePrompt={handleUsePrompt}
               />
+            ) : view === 'arena' ? (
+              <ArenaPage models={chat.models} status={chat.status} />
             ) : view === 'stats' ? (
               <StatsPage />
             ) : empty ? (
