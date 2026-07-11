@@ -84,10 +84,16 @@ export function ChatInput({
   // Voice input appends onto whatever was already typed when the mic was
   // pressed — `baseInput` is snapshotted at the start of each listening session.
   const baseInputRef = useRef('')
-  const { supported: micSupported, listening, toggle: toggleMic } = useSpeechInput((text) => {
+  const {
+    supported: micSupported,
+    listening,
+    error: micError,
+    clearError: clearMicError,
+    toggle: toggleMic,
+  } = useSpeechInput((text) => {
     const base = baseInputRef.current
     const sep = base && !base.endsWith(' ') ? ' ' : ''
-    setInput(base + sep + text)
+    setInput(text ? base + sep + text : base)
   })
   const handleMicClick = () => {
     if (!listening) baseInputRef.current = input
@@ -155,6 +161,28 @@ export function ChatInput({
                 onClick={onDismissRagNotice}
                 aria-label="Dismiss notice"
                 className="shrink-0 rounded p-0.5 text-amber-200/70 transition hover:text-amber-100"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </m.div>
+          )}
+        </AnimatePresence>
+
+        <AnimatePresence>
+          {micError && (
+            <m.div
+              initial={{ opacity: 0, y: 6 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 4 }}
+              transition={{ duration: 0.15, ease: 'easeOut' }}
+              className="mb-2 flex items-center gap-2 rounded-xl border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-200/90"
+            >
+              <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-rose-400" />
+              <span className="flex-1">{micError}</span>
+              <button
+                onClick={clearMicError}
+                aria-label="Dismiss voice error"
+                className="shrink-0 rounded p-0.5 text-rose-200/70 transition hover:text-rose-100"
               >
                 <X className="h-3.5 w-3.5" />
               </button>

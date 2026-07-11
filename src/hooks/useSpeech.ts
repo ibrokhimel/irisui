@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import type { SpeechResultListLike } from '../lib/speech'
+import { speechErrorMessage, transcriptFrom } from '../lib/speech'
 
 /**
  * Minimal ambient types for the (still-unstandardized) SpeechRecognition
@@ -7,19 +9,13 @@ import { useCallback, useEffect, useRef, useState } from 'react'
  * SpeechSynthesisUtterance ARE already in lib.dom.d.ts and need no
  * augmentation.
  */
-interface SpeechRecognitionResultLike {
-  readonly isFinal: boolean
-  readonly [index: number]: { readonly transcript: string }
-}
-
-interface SpeechRecognitionResultListLike {
-  readonly length: number
-  readonly [index: number]: SpeechRecognitionResultLike
-}
-
 interface SpeechRecognitionEventLike extends Event {
   readonly resultIndex: number
-  readonly results: SpeechRecognitionResultListLike
+  readonly results: SpeechResultListLike
+}
+
+interface SpeechRecognitionErrorEventLike extends Event {
+  readonly error: string
 }
 
 interface SpeechRecognitionLike extends EventTarget {
@@ -30,7 +26,7 @@ interface SpeechRecognitionLike extends EventTarget {
   stop(): void
   abort(): void
   onresult: ((event: SpeechRecognitionEventLike) => void) | null
-  onerror: (() => void) | null
+  onerror: ((event: SpeechRecognitionErrorEventLike) => void) | null
   onend: (() => void) | null
 }
 
@@ -59,6 +55,7 @@ function getRecognitionCtor(): SpeechRecognitionConstructor | undefined {
 export function useSpeechInput(onTranscript: (text: string, isFinal: boolean) => void) {
   const supported = !!getRecognitionCtor()
   const [listening, setListening] = useState(false)
+  const [error, setError] = useState('')
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null)
   const onTranscriptRef = useRef(onTranscript)
   onTranscriptRef.current = onTranscript
@@ -74,21 +71,27 @@ export function useSpeechInput(onTranscript: (text: string, isFinal: boolean) =>
     recognition.lang = typeof navigator !== 'undefined' ? navigator.language : 'en-US'
     recognition.continuous = true
     recognition.interimResults = true
+    // Fold the WHOLE session — Chrome advances resultIndex past finalized
+    // utterances, so reading from it would hand back only the newest phrase
+    // and the composer would overwrite everything said before it.
     recognition.onresult = (event) => {
-      let text = ''
-      let isFinal = false
-      for (let i = event.resultIndex; i < event.results.length; i++) {
-        const result = event.results[i]
-        text += result[0].transcript
-        if (result.isFinal) isFinal = true
-      }
+      const { text, isFinal } = transcriptFrom(event.results)
       onTranscriptRef.current(text, isFinal)
     }
-    recognition.onerror = () => setListening(false)
+    recognition.onerror = (event) => {
+      setError(speechErrorMessage(event.error))
+      setListening(false)
+    }
     recognition.onend = () => setListening(false)
     recognitionRef.current = recognition
-    recognition.start()
-    setListening(true)
+    setError('')
+    try {
+      recognition.start()
+      setListening(true)
+    } catch {
+      // start() throws if a session is somehow already running.
+      setListening(false)
+    }
   }, [])
 
   const toggle = useCallback(() => {
@@ -96,11 +99,13 @@ export function useSpeechInput(onTranscript: (text: string, isFinal: boolean) =>
     else start()
   }, [listening, start, stop])
 
+  const clearError = useCallback(() => setError(''), [])
+
   // Abort a still-running session if the component unmounts (e.g. the
   // composer swaps between the hero/docked variant).
   useEffect(() => () => recognitionRef.current?.abort(), [])
 
-  return { supported, listening, toggle }
+  return { supported, listening, error, clearError, toggle }
 }
 
 export function isSpeechSynthesisSupported(): boolean {
