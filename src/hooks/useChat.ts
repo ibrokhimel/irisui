@@ -1,6 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ChatMessage, Effort, OllamaModel, OllamaStatus } from '../types'
-import { fetchModels, isAbortError, streamChat } from '../lib/ollama'
+import { fetchModels, isAbortError, resolveNumCtx, streamChat } from '../lib/ollama'
+import type { AutoContext } from '../lib/kvCache'
+import { effectiveRamGb } from '../lib/hardware'
+import { contextVerdict, projectContextUse, wasTruncated } from '../lib/contextGuard'
+import type { ContextVerdict } from '../lib/contextGuard'
 import { getStore } from '../lib/store'
 import type { Conversation, ConversationMeta } from '../lib/store'
 import { download, slugify, toJSON, toMarkdown } from '../lib/exporters'
@@ -94,6 +98,37 @@ export function useChat() {
     currentRef.current = current
   }, [current])
   const abortRef = useRef<AbortController | null>(null)
+
+  // ── context window ──
+  // 'auto' can't be resolved once and stored on the conversation: the affordable
+  // window depends on the model's KV geometry, and the model can change
+  // mid-chat. So it re-resolves whenever the model or the setting does.
+  const [ctx, setCtx] = useState<AutoContext | undefined>(undefined)
+  const [summarizing, setSummarizing] = useState(false)
+  const ctxRef = useRef<AutoContext | undefined>(undefined)
+  ctxRef.current = ctx
+
+  const model = current.model
+  const numCtxSetting = current.numCtx ?? loadAppSettings().defaultNumCtx
+  useEffect(() => {
+    if (!model) {
+      setCtx(undefined)
+      return
+    }
+    let cancelled = false
+    const modelBytes = models.find((m) => m.name === model)?.size ?? 0
+    void resolveNumCtx({
+      model,
+      setting: numCtxSetting,
+      modelBytes,
+      ramGb: effectiveRamGb(),
+    }).then((resolved) => {
+      if (!cancelled) setCtx(resolved)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [model, numCtxSetting, models])
 
   const persist = useCallback(
     async (conv: Conversation) => {
@@ -211,12 +246,23 @@ export function useChat() {
       const t0 = performance.now()
       let firstTokenAt = 0
       let messageStat: MessageStat | undefined
+      // Resolve the window for THIS request rather than trusting the effect's
+      // state, which may still be in flight on the first send of a new chat.
+      const resolved =
+        ctxRef.current ??
+        (await resolveNumCtx({
+          model: base.model,
+          setting: base.numCtx ?? loadAppSettings().defaultNumCtx,
+          modelBytes: models.find((m) => m.name === base.model)?.size ?? 0,
+          ramGb: effectiveRamGb(),
+        }))
+
       try {
         const meta = await streamChat({
           model: base.model,
           messages: apiMessages,
           temperature: base.temperature,
-          numCtx: base.numCtx,
+          numCtx: resolved.numCtx,
           signal: controller.signal,
           onToken: (chunk) => {
             if (!firstTokenAt) firstTokenAt = performance.now()
@@ -234,7 +280,14 @@ export function useChat() {
             totalMs: performance.now() - t0,
             meta,
           })
-          messageStat = toMessageStat(stat)
+          // If Ollama evaluated a prompt that filled the whole window, it
+          // context-shifted: this reply was generated against a conversation
+          // with its oldest turns silently dropped. Mark it — the answer looks
+          // perfectly normal, and only this flag reveals it isn't trustworthy.
+          messageStat = {
+            ...toMessageStat(stat),
+            truncated: wasTruncated(meta.promptTokens, resolved.numCtx),
+          }
           void addStat(stat)
         }
       } catch (err) {
@@ -267,13 +320,51 @@ export function useChat() {
         })
       }
     },
-    [persist],
+    [persist, models],
   )
+
+  // ── the overflow guard ──
+  // The history's size is known EXACTLY (Ollama reports it); only the draft is
+  // estimated, and deliberately over-estimated. See lib/contextGuard.ts.
+  const lastStat = useMemo(() => {
+    for (let i = current.messages.length - 1; i >= 0; i--) {
+      const m = current.messages[i]
+      if (m.role === 'assistant' && m.stat) return m.stat
+    }
+    return undefined
+  }, [current.messages])
+
+  const contextState = useMemo(() => {
+    const limit = ctx?.numCtx ?? 0
+    const used = (lastStat?.promptTokens ?? 0) + (lastStat?.completionTokens ?? 0)
+    const tokens = {
+      lastPromptTokens: lastStat?.promptTokens,
+      lastCompletionTokens: lastStat?.completionTokens,
+    }
+    const projected = projectContextUse({ ...tokens, draft: input })
+    // Regenerate/continue send no new draft, so they overflow only if the
+    // history alone no longer fits.
+    const historyOnly = projectContextUse({ ...tokens, draft: '' })
+    return {
+      used,
+      limit,
+      projected,
+      verdict: contextVerdict(projected, limit) as ContextVerdict,
+      historyFull: contextVerdict(historyOnly, limit) === 'full',
+      reason: ctx?.reason,
+      truncated: lastStat?.truncated === true,
+    }
+  }, [ctx, lastStat, input])
+
+  const contextFull = contextState.verdict === 'full'
 
   const send = useCallback(async () => {
     const text = input.trim()
     const base = currentRef.current
     if (!text || isStreaming || status !== 'online' || !base.model) return
+    // Refuse rather than let Ollama context-shift the oldest turns out from
+    // under the user. Nothing is sent, so the model can't silently forget.
+    if (contextFull) return
     const userMsg: ChatMessage = { id: crypto.randomUUID(), role: 'user', content: text }
     const history = [...base.messages, userMsg]
     const title = base.messages.length === 0 ? deriveTitle(text) : base.title
@@ -300,25 +391,114 @@ export function useChat() {
     }
 
     await run(base, history, title, { context })
-  }, [input, isStreaming, status, run, models])
+  }, [input, isStreaming, status, run, models, contextFull])
 
+  /**
+   * Condense the conversation and carry it into a fresh chat.
+   *
+   * The escape hatch from a full window. The summary is LOSSY — this is not a
+   * lossless carry-over, and the UI says so. It works because we blocked BEFORE
+   * overflowing: the existing history still fits the window, it's only the next
+   * turn that wouldn't. So the transcript can be summarized in one pass.
+   */
+  const summarizeAndContinue = useCallback(async () => {
+    const base = currentRef.current
+    if (summarizing || isStreaming || status !== 'online' || !base.model) return
+    if (base.messages.length === 0) return
+
+    setSummarizing(true)
+    const controller = new AbortController()
+    abortRef.current = controller
+    try {
+      const transcript = base.messages
+        .map((m) => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content}`)
+        .join('\n\n')
+
+      let summary = ''
+      await streamChat({
+        model: base.model,
+        messages: [
+          {
+            role: 'system',
+            content:
+              'You condense conversations so they can be continued in a fresh context window. ' +
+              'Capture decisions, facts, names, code, and open threads. Be dense and factual. ' +
+              'Do not add commentary or pleasantries.',
+          },
+          {
+            role: 'user',
+            content: `Summarize this conversation so it can be continued without losing what matters:\n\n${transcript}`,
+          },
+        ],
+        temperature: 0.2,
+        numCtx: ctxRef.current?.numCtx,
+        signal: controller.signal,
+        onToken: (chunk) => {
+          summary += chunk
+        },
+      })
+
+      if (!summary.trim()) throw new Error('empty summary')
+
+      // Seed the new chat with the summary as a real, visible message pair
+      // rather than a hidden system prompt — the user can read exactly what was
+      // carried over, and correct it if the model dropped something.
+      const conv = newConversation(base.model)
+      const seeded: Conversation = {
+        ...conv,
+        title: `${base.title} (continued)`,
+        effort: base.effort,
+        temperature: base.temperature,
+        numCtx: base.numCtx,
+        kbId: base.kbId,
+        personaId: base.personaId,
+        messages: [
+          {
+            id: crypto.randomUUID(),
+            role: 'user',
+            content: `Summary of our conversation so far:\n\n${summary.trim()}`,
+          },
+          {
+            id: crypto.randomUUID(),
+            role: 'assistant',
+            content: "Got it — I've got the summary. Let's continue.",
+          },
+        ],
+      }
+      setCurrent(seeded)
+      setInput('')
+      void persist(seeded)
+    } catch (err) {
+      if (!isAbortError(err)) {
+        console.warn('Summarize failed; the conversation is unchanged', err)
+      }
+    } finally {
+      setSummarizing(false)
+      abortRef.current = null
+    }
+  }, [summarizing, isStreaming, status, persist])
+
+  // Regenerate and continue carry no new draft, so they only overflow when the
+  // history alone no longer fits — but they'd context-shift just as silently.
   const regenerate = useCallback(async () => {
     const base = currentRef.current
     if (isStreaming || status !== 'online' || !base.model) return
+    if (contextState.historyFull) return
     const history = [...base.messages]
     while (history.length && history[history.length - 1].role === 'assistant') history.pop()
     if (history.length === 0) return
     await run(base, history, base.title)
-  }, [isStreaming, status, run])
+  }, [isStreaming, status, run, contextState.historyFull])
 
   /** Resume generation on the last assistant message (e.g. after Stop, or a short reply). */
   const continueResponse = useCallback(async () => {
     const base = currentRef.current
     if (isStreaming || status !== 'online' || !base.model) return
+    if (contextState.historyFull) return
     const last = base.messages[base.messages.length - 1]
     if (!last || last.role !== 'assistant' || !last.content) return
     await run(base, base.messages, base.title, { continueFrom: last.id })
-  }, [isStreaming, status, run])
+  }, [isStreaming, status, run, contextState.historyFull])
 
   // ── per-chat settings (persist only once the chat has content) ──
   const patchCurrent = useCallback(
@@ -478,6 +658,10 @@ export function useChat() {
     isStreaming,
     ragNotice,
     dismissRagNotice,
+    // context window
+    context: contextState,
+    contextFull,
+    summarizing,
     // per-chat setters
     setSelectedModel,
     setEffort,
@@ -487,6 +671,7 @@ export function useChat() {
     // actions
     send,
     stop,
+    summarizeAndContinue,
     regenerate,
     continueResponse,
     newChat,

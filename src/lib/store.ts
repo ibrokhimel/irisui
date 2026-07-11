@@ -1,4 +1,5 @@
 import type { ChatMessage, Effort } from '../types'
+import type { NumCtxSetting } from './appSettings'
 import { createIdbStore } from './idbStore'
 
 /**
@@ -16,9 +17,10 @@ export interface ConversationMeta {
   model: string
   effort: Effort
   temperature: number
-  /** num_ctx sent to Ollama for this chat. Optional so conversations
-   *  persisted before context-window tracking shipped load without migration. */
-  numCtx?: number
+  /** num_ctx setting for this chat — a pinned number, or 'auto' to derive it
+   *  from the model. Optional so conversations persisted before context-window
+   *  tracking shipped load without migration (they fall back to the default). */
+  numCtx?: NumCtxSetting
   /** Attached knowledge base for RAG-grounded replies. Optional so
    *  conversations persisted before v0.8 load without migration. */
   kbId?: string

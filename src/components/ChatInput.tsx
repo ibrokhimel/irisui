@@ -11,13 +11,13 @@ import {
   SlidersHorizontal,
   Square,
   X,
-  type LucideIcon,
 } from 'lucide-react'
 import { SPRING, TAP } from '../lib/motion'
 import type { Effort, OllamaModel, OllamaStatus } from '../types'
 import { EFFORT_OPTIONS, TEMP_MAX, TEMP_MIN, TEMP_STEP } from '../constants'
 import { DEFAULT_EMBED_MODEL } from '../lib/rag'
 import { useSpeechInput } from '../hooks/useSpeech'
+import { Banner, ContextFullNotice } from './ComposerBanner'
 
 export interface KbOption {
   id: string
@@ -54,6 +54,11 @@ export function ChatInput({
   onDismissRagNotice,
   persona,
   onClearPersona,
+  contextFull,
+  contextLimit,
+  summarizing,
+  onSummarize,
+  onNewChat,
 }: {
   variant: 'hero' | 'docked'
   input: string
@@ -62,6 +67,11 @@ export function ChatInput({
   onStop: () => void
   isStreaming: boolean
   canSend: boolean
+  contextFull: boolean
+  contextLimit: number
+  summarizing: boolean
+  onSummarize: () => void
+  onNewChat: () => void
   status: OllamaStatus
   effort: Effort
   setEffort: (effort: Effort) => void
@@ -154,6 +164,14 @@ export function ChatInput({
   return (
     <div className={shell}>
       <div className={inner}>
+        <ContextFullNotice
+          show={contextFull}
+          limit={contextLimit}
+          summarizing={summarizing}
+          onSummarize={onSummarize}
+          onNewChat={onNewChat}
+        />
+
         <Banner show={ragNotice} tone="amber" icon={AlertTriangle} onDismiss={onDismissRagNotice} dismissLabel="Dismiss notice">
           Knowledge attached but embedding model missing — install {DEFAULT_EMBED_MODEL} in Knowledge.
         </Banner>
@@ -449,51 +467,5 @@ function KbItem({
     >
       <span className="truncate">{children}</span>
     </button>
-  )
-}
-
-const BANNER_TONE = {
-  amber: { box: 'border-amber-500/30 bg-amber-500/10 text-amber-200/90', icon: 'text-amber-400' },
-  rose: { box: 'border-rose-500/30 bg-rose-500/10 text-rose-200/90', icon: 'text-rose-400' },
-  muted: { box: 'border-line bg-panel2/60 text-muted', icon: 'text-iris' },
-}
-
-/** Shared shell for the composer's dismissible/status banners (RAG notice, voice error, voice progress). */
-function Banner({
-  show, tone, icon: Icon, iconClassName, onDismiss, dismissLabel, children,
-}: {
-  show: boolean
-  tone: keyof typeof BANNER_TONE
-  icon: LucideIcon
-  iconClassName?: string
-  onDismiss?: () => void
-  dismissLabel?: string
-  children: ReactNode
-}) {
-  const { box, icon } = BANNER_TONE[tone]
-  return (
-    <AnimatePresence>
-      {show && (
-        <m.div
-          initial={{ opacity: 0, y: 6 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: 4 }}
-          transition={{ duration: 0.15, ease: 'easeOut' }}
-          className={`mb-2 flex items-center gap-2 rounded-xl border px-3 py-2 text-xs ${box}`}
-        >
-          <Icon className={`h-3.5 w-3.5 shrink-0 ${icon} ${iconClassName ?? ''}`} />
-          <span className="flex-1">{children}</span>
-          {onDismiss && (
-            <button
-              onClick={onDismiss}
-              aria-label={dismissLabel ?? 'Dismiss'}
-              className="shrink-0 rounded p-0.5 opacity-70 transition hover:opacity-100"
-            >
-              <X className="h-3.5 w-3.5" />
-            </button>
-          )}
-        </m.div>
-      )}
-    </AnimatePresence>
   )
 }

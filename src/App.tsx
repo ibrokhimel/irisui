@@ -31,7 +31,6 @@ import { useKbs } from './hooks/useKbs'
 import { useStudio } from './hooks/useStudio'
 import { useShortcuts } from './hooks/useShortcuts'
 import type { Persona } from './lib/studioStore'
-import { DEFAULT_NUM_CTX } from './constants'
 
 // Heavy/secondary views, split into their own chunks. StatsPage in particular
 // pulls in recharts, which is by far the largest dependency in the app.
@@ -77,21 +76,6 @@ export default function App() {
   )
 
   const empty = chat.messages.length === 0
-  // The context meter is measured, never estimated — an assistant message's
-  // stat is the only source of "what the next turn actually carries".
-  //
-  // Must skip assistant messages that have no stat yet, not just take the last
-  // one: the in-flight reply is appended with `stat: undefined` and only gets
-  // one when the stream finishes, so keying off the last assistant message
-  // would blank the meter to its placeholder for the whole generation. Walk
-  // backwards instead of copy-and-reversing — this runs on every streamed token.
-  const lastAssistantStat = useMemo(() => {
-    for (let i = chat.messages.length - 1; i >= 0; i--) {
-      const m = chat.messages[i]
-      if (m.role === 'assistant' && m.stat) return m.stat
-    }
-    return undefined
-  }, [chat.messages])
 
   const pullPercent =
     pull.progress?.total && pull.progress.total > 0
@@ -158,7 +142,13 @@ export default function App() {
     onSend: chat.send,
     onStop: chat.stop,
     isStreaming: chat.isStreaming,
-    canSend: chat.status === 'online' && !!chat.selectedModel,
+    // A full context window blocks sending outright — see useChat's overflow guard.
+    canSend: chat.status === 'online' && !!chat.selectedModel && !chat.contextFull,
+    contextFull: chat.contextFull,
+    contextLimit: chat.context.limit,
+    summarizing: chat.summarizing,
+    onSummarize: chat.summarizeAndContinue,
+    onNewChat: handleNewChat,
     status: chat.status,
     effort: chat.effort,
     setEffort: chat.setEffort,
@@ -298,11 +288,7 @@ export default function App() {
                 />
                 {chat.selectedModel && (
                   <div className="mx-auto w-full max-w-3xl px-4">
-                    <ContextMeter
-                      model={chat.selectedModel}
-                      numCtx={chat.numCtx ?? DEFAULT_NUM_CTX}
-                      stat={lastAssistantStat}
-                    />
+                    <ContextMeter model={chat.selectedModel} context={chat.context} />
                   </div>
                 )}
                 <ChatInput variant="docked" {...composerProps} />

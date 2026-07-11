@@ -1,7 +1,9 @@
+import { useState } from 'react'
 import { ArrowRight, Boxes } from 'lucide-react'
 import type { AppSettings } from '../lib/appSettings'
-import { EFFORT_OPTIONS, NUM_CTX_OPTIONS, TEMP_MAX, TEMP_MIN, TEMP_STEP } from '../constants'
+import { EFFORT_OPTIONS, NUM_CTX_LADDER, TEMP_MAX, TEMP_MIN, TEMP_STEP } from '../constants'
 import { formatTokens } from '../lib/context'
+import { RAM_OPTIONS, effectiveRamGb, saveHardwareProfile } from '../lib/hardware'
 
 export function SettingsChatDefaults({
   settings,
@@ -14,6 +16,8 @@ export function SettingsChatDefaults({
   defaultModel: string
   onGoToModels: () => void
 }) {
+  const [ramGb, setRamGb] = useState(effectiveRamGb)
+
   return (
     <div className="space-y-6">
       <section>
@@ -66,10 +70,23 @@ export function SettingsChatDefaults({
           <h3 className="text-xs font-semibold uppercase tracking-wider text-muted">
             Default context window
           </h3>
-          <span className="font-mono text-xs text-fg">{formatTokens(settings.defaultNumCtx)}</span>
+          <span className="font-mono text-xs text-fg">
+            {settings.defaultNumCtx === 'auto' ? 'Auto' : formatTokens(settings.defaultNumCtx)}
+          </span>
         </div>
         <div className="grid grid-cols-4 gap-1.5">
-          {NUM_CTX_OPTIONS.map((n) => {
+          <button
+            onClick={() => onUpdate({ defaultNumCtx: 'auto' })}
+            className={
+              'rounded-lg border px-2 py-2 text-center text-xs font-medium transition ' +
+              (settings.defaultNumCtx === 'auto'
+                ? 'border-iris bg-iris/10 text-fg'
+                : 'border-line text-muted hover:border-iris/40 hover:text-fg')
+            }
+          >
+            Auto
+          </button>
+          {NUM_CTX_LADDER.map((n) => {
             const active = settings.defaultNumCtx === n
             return (
               <button
@@ -89,8 +106,43 @@ export function SettingsChatDefaults({
         </div>
         <p className="mt-2 text-xs text-muted">
           Ollama's own default is 4,096 tokens, so most models silently run far below what they
-          were trained for. Raising the window lets a chat carry more history before it's
-          forgotten, but it costs more VRAM — the KV cache grows with it.
+          were trained for. <span className="text-fg/80">Auto</span> sizes the window from the
+          model's KV-cache geometry and your RAM — the largest window that actually fits. Pinning a
+          number instead can exceed what your machine can hold, which makes Ollama spill to the CPU
+          and crawl.
+        </p>
+      </section>
+
+      <section>
+        <div className="mb-1.5 flex items-center justify-between">
+          <h3 className="text-xs font-semibold uppercase tracking-wider text-muted">
+            System RAM
+          </h3>
+          <span className="font-mono text-xs text-fg">{ramGb} GB</span>
+        </div>
+        <div className="grid grid-cols-5 gap-1.5">
+          {RAM_OPTIONS.map((gb) => (
+            <button
+              key={gb}
+              onClick={() => {
+                saveHardwareProfile({ ramGb: gb, cores: null, source: 'manual' })
+                setRamGb(gb)
+              }}
+              className={
+                'rounded-lg border px-2 py-2 text-center text-xs font-medium transition ' +
+                (ramGb === gb
+                  ? 'border-iris bg-iris/10 text-fg'
+                  : 'border-line text-muted hover:border-iris/40 hover:text-fg')
+              }
+            >
+              {gb} GB
+            </button>
+          ))}
+        </div>
+        <p className="mt-2 text-xs text-muted">
+          Auto needs this to size the window, and a browser can't read it reliably —{' '}
+          <code className="text-fg/70">navigator.deviceMemory</code> is capped at 8 GB by spec, so
+          detection under-reports on most machines. Set it correctly and you'll get a bigger window.
         </p>
       </section>
 

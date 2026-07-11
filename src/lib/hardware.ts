@@ -24,3 +24,21 @@ export function loadHardwareProfile(): HardwareProfile | null {
 export function saveHardwareProfile(p: HardwareProfile): void {
   try { localStorage.setItem(KEY, JSON.stringify(p)) } catch { /* ignore */ }
 }
+
+export const FALLBACK_RAM_GB = 8
+
+/**
+ * RAM to budget the context window against. A saved profile always wins:
+ * `navigator.deviceMemory` is capped at 8 GB by spec, so detection silently
+ * under-reports on every real workstation and would cost the user most of the
+ * context window they paid for. When we have nothing, assume 8 GB and say so in
+ * the UI rather than pretending we know.
+ */
+export function effectiveRamGb(): number {
+  return loadHardwareProfile()?.ramGb ?? detectHardware()?.ramGb ?? FALLBACK_RAM_GB
+}
+
+/** Whether the RAM figure above is a real answer or just our fallback guess. */
+export function hasRamProfile(): boolean {
+  return loadHardwareProfile() !== null || detectHardware() !== null
+}
