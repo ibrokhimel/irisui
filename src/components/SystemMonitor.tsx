@@ -42,20 +42,23 @@ export function SystemMonitor({
   const mon = useSystemMonitor({ isStreaming })
 
   // Tokens/sec history: seed from the stats store (last 20 completed
-  // generations), then append as each new response finishes. lastStat's object
-  // identity changes exactly once per completed generation.
+  // generations), then append at the falling edge of isStreaming — the point
+  // where a generation just finished and lastStat has been updated to match
+  // it (useChat batches setIsStreaming(false) and the new-stat setCurrent(...)
+  // into one commit). This is deliberately NOT keyed on lastStat's identity:
+  // switching conversations rebuilds the whole message graph from IndexedDB,
+  // handing the panel a brand-new MessageStat object for an *old* generation
+  // with no falling edge involved — an identity-only guard would misfire on
+  // that and append a duplicate sample.
   //
-  // The seed (IndexedDB read) and the append (keyed on lastStat) both run in
-  // the mount flush, and the seed is async — so on a mount where lastStat is
-  // already populated (e.g. reopening a collapsed panel), the append can land
-  // before the seed resolves. The seed therefore MERGES in front of whatever
-  // has appended since mount rather than choosing one or the other: these are
-  // disjoint sets (history predating this mount vs. generations completing
-  // after it), so concatenation combines them instead of discarding either.
-  // The mount-time stat is excluded from the append (see mountStatRef below)
-  // since the seed will already carry it — otherwise it would double-count.
+  // The seed (IndexedDB read) and the append (keyed on the streaming edge)
+  // both run in the mount flush, and the seed is async — so on a mount where
+  // a generation is already streaming, the append can land before the seed
+  // resolves. The seed therefore MERGES in front of whatever has appended
+  // since mount rather than choosing one or the other: these are disjoint
+  // sets (history predating this mount vs. generations completing after it),
+  // so concatenation combines them instead of discarding either.
   const [tpsHistory, setTpsHistory] = useState<number[]>([])
-  const mountStatRef = useRef(lastStat)
   useEffect(() => {
     let cancelled = false
     void listStats(20).then((stats) => {
@@ -65,12 +68,19 @@ export function SystemMonitor({
     }).catch(() => { /* stats are best-effort */ })
     return () => { cancelled = true }
   }, [])
+  const wasStreamingRef = useRef(isStreaming)
+  const lastAppendedRef = useRef<MessageStat | undefined>(undefined)
   useEffect(() => {
-    if (lastStat === mountStatRef.current) return
-    if (lastStat && lastStat.tokensPerSec > 0) {
-      setTpsHistory((h) => pushSample(h, lastStat.tokensPerSec, 20))
-    }
-  }, [lastStat])
+    const justFinished = wasStreamingRef.current && !isStreaming
+    wasStreamingRef.current = isStreaming
+    if (!justFinished) return
+    const s = lastStat
+    // A stopped/aborted stream attaches no new stat, so lastStat would still be
+    // the previous generation's — the identity check keeps it out of the graph.
+    if (!s || s.tokensPerSec <= 0 || s === lastAppendedRef.current) return
+    lastAppendedRef.current = s
+    setTpsHistory((h) => pushSample(h, s.tokensPerSec, 20))
+  }, [isStreaming, lastStat])
 
   const gpu = mon.system?.gpu ?? null
   const fit = vramFit(mon.running)
