@@ -9,28 +9,23 @@ const pkg = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 
 
 // IrisUI dev server.
 //
-// The browser talks to Ollama through the `/ollama` proxy below rather than
-// hitting http://localhost:11434 directly. Same-origin requests can never trip
-// CORS, so the app works regardless of how the user's Ollama is configured.
-// See src/lib/ollama.ts for how the base URL is chosen.
+// No HTTP proxies: Ollama and Hugging Face are reached directly through
+// appFetch (src/lib/http.ts), which routes requests via Rust inside the Tauri
+// shell, where there is no browser origin and CORS never applies. Hardware
+// stats likewise come from the `system_stats` Tauri command, not a dev-server
+// middleware — a release build serves static files with nothing behind them.
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   define: {
     __APP_VERSION__: JSON.stringify(pkg.version),
   },
+  // Tauri compiles Rust into src-tauri/target and holds the .dll open; letting
+  // Vite's watcher near it throws EBUSY and kills the dev server.
   server: {
-    proxy: {
-      '/ollama': {
-        target: 'http://localhost:11434',
-        changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/ollama/, ''),
-      },
-      // Live model discovery from the Hugging Face API (same-origin via proxy).
-      '/hf': {
-        target: 'https://huggingface.co',
-        changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/hf/, ''),
-      },
+    port: 5173,
+    strictPort: true,
+    watch: {
+      ignored: ['**/src-tauri/**'],
     },
   },
 })

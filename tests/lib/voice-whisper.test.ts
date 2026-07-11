@@ -95,17 +95,65 @@ describe('loadWhisper', () => {
     await second
   })
 
-  it('reports download progress', async () => {
-    const { loadWhisper } = await importWhisper()
+  it('broadcasts download progress to subscribers', async () => {
+    const { loadWhisper, subscribeWhisperLoad, getWhisperLoad } = await importWhisper()
     const pcts: number[] = []
+    const unsubscribe = subscribeWhisperLoad(() => pcts.push(getWhisperLoad().pct))
 
-    const load = loadWhisper('onnx-community/whisper-base', (pct) => pcts.push(pct))
+    const load = loadWhisper('onnx-community/whisper-base')
+    expect(getWhisperLoad().status).toBe('downloading')
+
     FakeWorker.instances[0].emit({ type: 'progress', pct: 40 })
     FakeWorker.instances[0].emit({ type: 'progress', pct: 90 })
     FakeWorker.instances[0].emit({ type: 'ready' })
     await load
 
-    expect(pcts).toEqual([40, 90])
+    expect(pcts).toContain(40)
+    expect(pcts).toContain(90)
+    expect(getWhisperLoad()).toMatchObject({ status: 'ready', pct: 100 })
+    unsubscribe()
+  })
+
+  // The bug: progress used to be a callback owned by the component that started
+  // the download. ChatInput unmounts on every view switch, so navigating away
+  // killed the progress UI — and rejoining the in-flight load took the
+  // `current?.modelId === modelId` early-return, which ignored the new callback
+  // entirely, leaving a remounted composer frozen at 0% until it silently
+  // finished. A late subscriber must now see live progress.
+  it('reports live progress to a subscriber that joins mid-download', async () => {
+    const { loadWhisper, subscribeWhisperLoad, getWhisperLoad } = await importWhisper()
+
+    const load = loadWhisper('onnx-community/whisper-base')
+    FakeWorker.instances[0].emit({ type: 'progress', pct: 55 })
+
+    // A component mounting now (user navigated back) sees the live number...
+    expect(getWhisperLoad()).toMatchObject({ status: 'downloading', pct: 55 })
+
+    const seen: number[] = []
+    const unsubscribe = subscribeWhisperLoad(() => seen.push(getWhisperLoad().pct))
+
+    // ...and keeps receiving updates, without starting a second download.
+    const rejoined = loadWhisper('onnx-community/whisper-base')
+    expect(FakeWorker.instances).toHaveLength(1)
+
+    FakeWorker.instances[0].emit({ type: 'progress', pct: 80 })
+    FakeWorker.instances[0].emit({ type: 'ready' })
+    await Promise.all([load, rejoined])
+
+    expect(seen).toContain(80)
+    unsubscribe()
+  })
+
+  it('resets load state when the worker is disposed', async () => {
+    const { loadWhisper, disposeWhisper, getWhisperLoad } = await importWhisper()
+
+    const load = loadWhisper('onnx-community/whisper-base')
+    FakeWorker.instances[0].emit({ type: 'ready' })
+    await load
+    expect(getWhisperLoad().status).toBe('ready')
+
+    disposeWhisper()
+    expect(getWhisperLoad()).toMatchObject({ status: 'idle', pct: 0, modelId: null })
   })
 })
 

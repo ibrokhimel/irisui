@@ -1,0 +1,8 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Capabilities for the main IrisUI window.",
+  "windows": ["main"],
+  "comment": "No http scope here: we don't use tauri-plugin-http (it stamps the webview Origin, which Ollama 403s in a release build). HTTP goes through our own http_fetch command, and app-defined commands need no capability entry.",
+  "permissions": ["core:default"]
+}

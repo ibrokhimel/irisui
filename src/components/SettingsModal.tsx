@@ -10,7 +10,7 @@ import { SettingsConnection } from './SettingsConnection'
 import { SettingsData } from './SettingsData'
 import { SettingsVoice } from './SettingsVoice'
 
-type Tab = 'appearance' | 'chat' | 'voice' | 'connection' | 'data'
+export type Tab = 'appearance' | 'chat' | 'voice' | 'connection' | 'data'
 
 const TABS: { id: Tab; label: string; icon: typeof Palette }[] = [
   { id: 'appearance', label: 'Appearance', icon: Palette },
@@ -32,6 +32,7 @@ export function SettingsModal({
   defaultModel,
   onGoToModels,
   onBeforeWipe,
+  initialTab,
 }: {
   open: boolean
   theme: ThemeSettings
@@ -44,8 +45,16 @@ export function SettingsModal({
   defaultModel: string
   onGoToModels: () => void
   onBeforeWipe?: () => void
+  initialTab?: Tab
 }) {
-  const [tab, setTab] = useState<Tab>('appearance')
+  const [tab, setTab] = useState<Tab>(initialTab ?? 'appearance')
+
+  // The modal stays mounted between openings, so a caller that opens it on a
+  // specific tab (the first-run notice sends the user straight to Data) needs
+  // the tab reset on each open rather than only on first mount.
+  useEffect(() => {
+    setTab(initialTab ?? 'appearance')
+  }, [open, initialTab])
 
   useEffect(() => {
     if (!open) return

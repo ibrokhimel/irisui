@@ -17,6 +17,40 @@ interface WhisperWorkerHandle {
 
 let current: WhisperWorkerHandle | null = null
 
+/**
+ * Download state lives HERE, at module scope — not in the component that starts
+ * it. The mic lives in ChatInput, which unmounts the moment you switch to
+ * Models/Knowledge/Stats, and a several-hundred-megabyte download must not have
+ * its progress evaporate because you clicked away. The worker already survived
+ * navigation (it's owned by `current` up there); only the UI's knowledge of it
+ * didn't. Any component can now subscribe and see the live number.
+ */
+export interface WhisperLoad {
+  status: 'idle' | 'downloading' | 'ready' | 'error'
+  pct: number
+  modelId: string | null
+  error: string
+}
+
+const IDLE: WhisperLoad = { status: 'idle', pct: 0, modelId: null, error: '' }
+let load: WhisperLoad = IDLE
+const listeners = new Set<() => void>()
+
+/** Stable snapshot for useSyncExternalStore — identity only changes on a real update. */
+export function getWhisperLoad(): WhisperLoad {
+  return load
+}
+
+export function subscribeWhisperLoad(onChange: () => void): () => void {
+  listeners.add(onChange)
+  return () => void listeners.delete(onChange)
+}
+
+function setLoad(patch: Partial<WhisperLoad>): void {
+  load = { ...load, ...patch }
+  for (const listener of listeners) listener()
+}
+
 export function isWhisperSupported(): boolean {
   return (
     typeof Worker !== 'undefined' &&
@@ -26,7 +60,7 @@ export function isWhisperSupported(): boolean {
   )
 }
 
-function createWorkerHandle(modelId: string, onProgress?: (pct: number) => void): WhisperWorkerHandle {
+function createWorkerHandle(modelId: string): WhisperWorkerHandle {
   const worker = new Worker(new URL('../workers/whisper.worker.ts', import.meta.url), {
     type: 'module',
   })
@@ -35,7 +69,9 @@ function createWorkerHandle(modelId: string, onProgress?: (pct: number) => void)
     worker.onmessage = (event: MessageEvent<WorkerOutMessage>) => {
       const msg = event.data
       if (msg.type === 'progress') {
-        onProgress?.(msg.pct)
+        // Broadcast, rather than calling one caller's callback: whoever kicked
+        // the download off may be long unmounted by the time this fires.
+        setLoad({ status: 'downloading', pct: msg.pct, modelId })
         return
       }
       // 'ready'/'error' only ever fire once per load — detach so a later
@@ -62,10 +98,12 @@ function createWorkerHandle(modelId: string, onProgress?: (pct: number) => void)
  * the situation the local engine exists to rescue. On rejection we tear the
  * handle down so the next click gets a genuinely fresh attempt.
  */
-export async function loadWhisper(
-  modelId: string = DEFAULT_ASR_MODEL,
-  onProgress?: (pct: number) => void,
-): Promise<void> {
+export async function loadWhisper(modelId: string = DEFAULT_ASR_MODEL): Promise<void> {
+  // Already loading or loaded this model: join the in-flight load rather than
+  // starting a second one. Progress keeps flowing to subscribers from the
+  // worker handler above — which is why progress is no longer a callback
+  // argument. It used to be, and this branch ignored it, so a remounted
+  // composer sat frozen at 0% until the download silently finished.
   if (current?.modelId === modelId) {
     try {
       await current.ready
@@ -75,14 +113,22 @@ export async function loadWhisper(
       throw err
     }
   }
+
   disposeWhisper()
-  const handle = createWorkerHandle(modelId, onProgress)
+  setLoad({ status: 'downloading', pct: 0, modelId, error: '' })
+  const handle = createWorkerHandle(modelId)
   current = handle
   try {
     await handle.ready
+    if (current === handle) setLoad({ status: 'ready', pct: 100 })
   } catch (err) {
     // Only dispose if nothing else has replaced this handle in the meantime.
     if (current === handle) disposeWhisper()
+    setLoad({
+      status: 'error',
+      pct: 0,
+      error: err instanceof Error ? err.message : 'Model download failed.',
+    })
     throw err
   }
 }
@@ -121,6 +167,8 @@ export function disposeWhisper(): void {
   if (!current) return
   current.worker.terminate()
   current = null
+  load = IDLE
+  for (const listener of listeners) listener()
   const rejectors = pendingTranscriptions
   pendingTranscriptions = new Set()
   for (const reject of rejectors) reject(new Error('Transcription was cancelled.'))

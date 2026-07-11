@@ -41,17 +41,31 @@ async function load(modelId: string): Promise<void> {
     }
   }
 
+  // dtype MUST be pinned, for two reasons:
+  //
+  // 1. Size. Left unset, transformers.js picks fp32 on webgpu — whisper-base in
+  //    fp32 is ~290 MB, against ~80 MB quantized. The sizes quoted in Settings
+  //    (asrModels.ts) are the quantized ones, so an unpinned dtype silently
+  //    downloads several times what the UI promised.
+  // 2. The fallback below would otherwise re-download. wasm defaults to q8 while
+  //    webgpu defaults to fp32, so a failed webgpu init followed by the wasm
+  //    retry would fetch a *different set of files* — paying for the model twice.
+  //
+  // Pinning q8 for both keeps the download small and makes the retry a cache hit.
+  const options = { dtype: 'q8', progress_callback: onProgress } as const
+
   try {
     transcriber = await pipeline('automatic-speech-recognition', modelId, {
+      ...options,
       device: 'webgpu',
-      progress_callback: onProgress,
     })
   } catch {
     // No WebGPU adapter, or its init threw — wasm runs everywhere (CPU),
     // just slower, so it's the universal fallback rather than a hard error.
+    // Same dtype, so the weights already fetched above are reused, not refetched.
     transcriber = await pipeline('automatic-speech-recognition', modelId, {
+      ...options,
       device: 'wasm',
-      progress_callback: onProgress,
     })
   }
   post({ type: 'ready' })
