@@ -5,11 +5,13 @@ import {
   ArrowUp,
   BookOpen,
   ChevronDown,
+  Loader2,
   Mic,
   MicOff,
   SlidersHorizontal,
   Square,
   X,
+  type LucideIcon,
 } from 'lucide-react'
 import { SPRING, TAP } from '../lib/motion'
 import type { Effort, OllamaModel, OllamaStatus } from '../types'
@@ -90,11 +92,20 @@ export function ChatInput({
     error: micError,
     clearError: clearMicError,
     toggle: toggleMic,
+    engine: micEngine,
+    status: voiceStatus,
+    downloadPct,
   } = useSpeechInput((text) => {
     const base = baseInputRef.current
     const sep = base && !base.endsWith(' ') ? ' ' : ''
     setInput(text ? base + sep + text : base)
   })
+  const micBusy = voiceStatus === 'downloading' || voiceStatus === 'transcribing'
+  const voiceBusyLabel =
+    voiceStatus === 'downloading' ? `Downloading on-device speech model… ${downloadPct}%` : 'Transcribing…'
+  const micListeningTitle =
+    micEngine === 'local' ? 'Recording… click to stop and transcribe' : 'Listening… click to stop'
+  const micTitle = listening ? micListeningTitle : micBusy ? voiceBusyLabel : 'Voice input'
   const handleMicClick = () => {
     if (!listening) baseInputRef.current = input
     toggleMic()
@@ -137,58 +148,23 @@ export function ChatInput({
           ? 'Connecting to Ollama…'
           : 'How can I help you today?'
 
-  const shell =
-    variant === 'docked' ? 'border-t border-line bg-bg px-4 py-4' : ''
+  const shell = variant === 'docked' ? 'border-t border-line bg-bg px-4 py-4' : ''
   const inner = variant === 'docked' ? 'mx-auto w-full max-w-3xl' : 'w-full'
 
   return (
     <div className={shell}>
       <div className={inner}>
-        <AnimatePresence>
-          {ragNotice && (
-            <m.div
-              initial={{ opacity: 0, y: 6 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: 4 }}
-              transition={{ duration: 0.15, ease: 'easeOut' }}
-              className="mb-2 flex items-center gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-200/90"
-            >
-              <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-amber-400" />
-              <span className="flex-1">
-                Knowledge attached but embedding model missing — install {DEFAULT_EMBED_MODEL} in Knowledge.
-              </span>
-              <button
-                onClick={onDismissRagNotice}
-                aria-label="Dismiss notice"
-                className="shrink-0 rounded p-0.5 text-amber-200/70 transition hover:text-amber-100"
-              >
-                <X className="h-3.5 w-3.5" />
-              </button>
-            </m.div>
-          )}
-        </AnimatePresence>
+        <Banner show={ragNotice} tone="amber" icon={AlertTriangle} onDismiss={onDismissRagNotice} dismissLabel="Dismiss notice">
+          Knowledge attached but embedding model missing — install {DEFAULT_EMBED_MODEL} in Knowledge.
+        </Banner>
 
-        <AnimatePresence>
-          {micError && (
-            <m.div
-              initial={{ opacity: 0, y: 6 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: 4 }}
-              transition={{ duration: 0.15, ease: 'easeOut' }}
-              className="mb-2 flex items-center gap-2 rounded-xl border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-200/90"
-            >
-              <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-rose-400" />
-              <span className="flex-1">{micError}</span>
-              <button
-                onClick={clearMicError}
-                aria-label="Dismiss voice error"
-                className="shrink-0 rounded p-0.5 text-rose-200/70 transition hover:text-rose-100"
-              >
-                <X className="h-3.5 w-3.5" />
-              </button>
-            </m.div>
-          )}
-        </AnimatePresence>
+        <Banner show={micBusy} tone="muted" icon={Loader2} iconClassName="animate-spin">
+          {voiceBusyLabel}
+        </Banner>
+
+        <Banner show={!!micError} tone="rose" icon={AlertTriangle} onDismiss={clearMicError} dismissLabel="Dismiss voice error">
+          {micError}
+        </Banner>
 
         <div className="rounded-3xl border border-line bg-panel2 shadow-[0_4px_24px_-12px_rgba(0,0,0,0.5)] transition focus-within:border-iris/50">
           <textarea
@@ -357,17 +333,24 @@ export function ChatInput({
               <button
                 type="button"
                 onClick={handleMicClick}
+                disabled={micBusy}
                 aria-label={listening ? 'Stop voice input' : 'Voice input'}
                 aria-pressed={listening}
-                title={listening ? 'Listening… click to stop' : 'Voice input'}
+                title={micTitle}
                 className={
-                  'flex h-8 w-8 items-center justify-center rounded-lg transition ' +
+                  'flex h-8 w-8 items-center justify-center rounded-lg transition disabled:cursor-not-allowed disabled:opacity-60 ' +
                   (listening
                     ? 'mic-listening bg-iris/10 text-iris'
                     : 'text-muted hover:bg-panel hover:text-fg')
                 }
               >
-                {listening ? <MicOff className="h-[18px] w-[18px]" /> : <Mic className="h-[18px] w-[18px]" />}
+                {micBusy ? (
+                  <Loader2 className="h-[18px] w-[18px] animate-spin" />
+                ) : listening ? (
+                  <MicOff className="h-[18px] w-[18px]" />
+                ) : (
+                  <Mic className="h-[18px] w-[18px]" />
+                )}
               </button>
             )}
 
@@ -466,5 +449,51 @@ function KbItem({
     >
       <span className="truncate">{children}</span>
     </button>
+  )
+}
+
+const BANNER_TONE = {
+  amber: { box: 'border-amber-500/30 bg-amber-500/10 text-amber-200/90', icon: 'text-amber-400' },
+  rose: { box: 'border-rose-500/30 bg-rose-500/10 text-rose-200/90', icon: 'text-rose-400' },
+  muted: { box: 'border-line bg-panel2/60 text-muted', icon: 'text-iris' },
+}
+
+/** Shared shell for the composer's dismissible/status banners (RAG notice, voice error, voice progress). */
+function Banner({
+  show, tone, icon: Icon, iconClassName, onDismiss, dismissLabel, children,
+}: {
+  show: boolean
+  tone: keyof typeof BANNER_TONE
+  icon: LucideIcon
+  iconClassName?: string
+  onDismiss?: () => void
+  dismissLabel?: string
+  children: ReactNode
+}) {
+  const { box, icon } = BANNER_TONE[tone]
+  return (
+    <AnimatePresence>
+      {show && (
+        <m.div
+          initial={{ opacity: 0, y: 6 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: 4 }}
+          transition={{ duration: 0.15, ease: 'easeOut' }}
+          className={`mb-2 flex items-center gap-2 rounded-xl border px-3 py-2 text-xs ${box}`}
+        >
+          <Icon className={`h-3.5 w-3.5 shrink-0 ${icon} ${iconClassName ?? ''}`} />
+          <span className="flex-1">{children}</span>
+          {onDismiss && (
+            <button
+              onClick={onDismiss}
+              aria-label={dismissLabel ?? 'Dismiss'}
+              className="shrink-0 rounded p-0.5 opacity-70 transition hover:opacity-100"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          )}
+        </m.div>
+      )}
+    </AnimatePresence>
   )
 }

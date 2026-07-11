@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { AnimatePresence, m } from 'motion/react'
-import { Database, MessageSquare, Palette, Wifi, X } from 'lucide-react'
+import { Database, MessageSquare, Mic, Palette, Wifi, X } from 'lucide-react'
 import type { ThemePreset, ThemeSettings } from '../theme'
 import type { AppSettings } from '../lib/appSettings'
 import { SPRING } from '../lib/motion'
@@ -8,12 +8,14 @@ import { SettingsAppearance } from './SettingsAppearance'
 import { SettingsChatDefaults } from './SettingsChatDefaults'
 import { SettingsConnection } from './SettingsConnection'
 import { SettingsData } from './SettingsData'
+import { SettingsVoice } from './SettingsVoice'
 
-type Tab = 'appearance' | 'chat' | 'connection' | 'data'
+type Tab = 'appearance' | 'chat' | 'voice' | 'connection' | 'data'
 
 const TABS: { id: Tab; label: string; icon: typeof Palette }[] = [
   { id: 'appearance', label: 'Appearance', icon: Palette },
   { id: 'chat', label: 'Chat defaults', icon: MessageSquare },
+  { id: 'voice', label: 'Voice', icon: Mic },
   { id: 'connection', label: 'Connection', icon: Wifi },
   { id: 'data', label: 'Data', icon: Database },
 ]
@@ -129,6 +131,9 @@ export function SettingsModal({
                 defaultModel={defaultModel}
                 onGoToModels={onGoToModels}
               />
+            )}
+            {tab === 'voice' && (
+              <SettingsVoice settings={appSettings} onUpdate={onUpdateAppSettings} />
             )}
             {tab === 'connection' && (
               <SettingsConnection settings={appSettings} onUpdate={onUpdateAppSettings} />

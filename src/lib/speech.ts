@@ -3,6 +3,8 @@
  * Chrome/Edge result semantics are unit-testable.
  */
 
+import type { VoiceEngine } from './appSettings'
+
 export interface SpeechResultLike {
   readonly isFinal: boolean
   readonly [index: number]: { readonly transcript: string }
@@ -57,4 +59,42 @@ export function speechErrorMessage(code: string): string {
     default:
       return 'Voice input failed. Try again.'
   }
+}
+
+export type SpeechErrorKind = 'benign' | 'permission' | 'device' | 'service' | 'unknown'
+
+/**
+ * Classifies a recognition error code for fallback ROUTING (as opposed to
+ * `speechErrorMessage`, which classifies for user-facing text). 'service'
+ * covers both codes Chrome/Edge use when their remote speech backend is
+ * unreachable — that's the one case where switching to on-device Whisper can
+ * actually fix things. 'permission'/'device' are real local problems a
+ * fallback can't help with, so callers must not react to those the same way.
+ */
+export function speechErrorKind(code: string): SpeechErrorKind {
+  switch (code) {
+    case 'network':
+    case 'service-not-allowed':
+      return 'service'
+    case 'not-allowed':
+      return 'permission'
+    case 'audio-capture':
+      return 'device'
+    case 'no-speech':
+    case 'aborted':
+      return 'benign'
+    default:
+      return 'unknown'
+  }
+}
+
+/**
+ * Whether a recognition session should sticky-switch to on-device Whisper
+ * after this error. Only 'auto' sessions may fall back — a session pinned to
+ * 'web' means the user explicitly chose browser-only, so a dead remote
+ * service should surface as an error rather than silently swap engines
+ * underneath them; 'local' sessions never touch the browser engine at all.
+ */
+export function shouldFallbackToLocal(sessionMode: VoiceEngine, kind: SpeechErrorKind): boolean {
+  return sessionMode === 'auto' && kind === 'service'
 }
