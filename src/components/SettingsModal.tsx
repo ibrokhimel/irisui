@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { AnimatePresence, m } from 'motion/react'
 import { Database, MessageSquare, Mic, Palette, Wifi, X } from 'lucide-react'
-import type { ThemePreset, ThemeSettings } from '../theme'
+import type { CustomThemeVars, ThemePreset, ThemeSettings } from '../theme'
 import type { AppSettings } from '../lib/appSettings'
 import { SPRING } from '../lib/motion'
 import { SettingsAppearance } from './SettingsAppearance'
@@ -26,6 +26,8 @@ export function SettingsModal({
   onClose,
   onSelectPreset,
   onSelectAccent,
+  onSetCustomVar,
+  onSeedCustomFrom,
   onReset,
   appSettings,
   onUpdateAppSettings,
@@ -38,6 +40,8 @@ export function SettingsModal({
   onClose: () => void
   onSelectPreset: (preset: ThemePreset) => void
   onSelectAccent: (hex: string) => void
+  onSetCustomVar: (key: keyof CustomThemeVars, hex: string) => void
+  onSeedCustomFrom: (preset: Exclude<ThemePreset, 'custom'>) => void
   onReset: () => void
   appSettings: AppSettings
   onUpdateAppSettings: (patch: Partial<AppSettings>) => void
@@ -121,6 +125,8 @@ export function SettingsModal({
                 theme={theme}
                 onSelectPreset={onSelectPreset}
                 onSelectAccent={onSelectAccent}
+                onSetCustomVar={onSetCustomVar}
+                onSeedCustomFrom={onSeedCustomFrom}
                 onReset={onReset}
               />
             )}

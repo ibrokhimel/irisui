@@ -1,24 +1,95 @@
-import { Check, RotateCcw } from 'lucide-react'
-import type { ThemePreset, ThemeSettings } from '../theme'
-import { ACCENTS, PRESETS, isValidHex } from '../theme'
+import { useState } from 'react'
+import { Check, RotateCcw, SwatchBook } from 'lucide-react'
+import type { CustomThemeVars, ThemePreset, ThemeSettings } from '../theme'
+import { ACCENTS, CUSTOM_TOKEN_LABELS, PRESETS, customToVars, isValidHex } from '../theme'
+
+type ConcretePreset = Exclude<ThemePreset, 'custom'>
+
+function TokenRow({
+  label, value, onChange,
+}: {
+  label: string
+  value: string
+  onChange: (hex: string) => void
+}) {
+  // Draft state lets the user type through invalid intermediate hex values;
+  // only valid input is committed (same philosophy as the accent picker).
+  const [draft, setDraft] = useState<string | null>(null)
+  const commit = (v: string) => {
+    if (isValidHex(v)) {
+      onChange(v.startsWith('#') ? v : `#${v}`)
+      setDraft(null)
+    } else {
+      setDraft(v)
+    }
+  }
+  return (
+    <div className="flex items-center justify-between gap-3">
+      <span className="text-sm text-fg">{label}</span>
+      <span className="flex items-center gap-2">
+        <input
+          type="color"
+          value={value}
+          onChange={(e) => commit(e.target.value)}
+          aria-label={`${label} color`}
+          className="h-7 w-9 cursor-pointer rounded border border-line bg-transparent p-0.5"
+        />
+        <input
+          type="text"
+          value={draft ?? value}
+          onChange={(e) => commit(e.target.value)}
+          onBlur={() => setDraft(null)}
+          spellCheck={false}
+          aria-label={`${label} hex value`}
+          className="w-24 rounded-lg border border-line bg-panel2 px-2 py-1 font-mono text-xs text-fg outline-none focus:border-iris"
+        />
+      </span>
+    </div>
+  )
+}
 
 export function SettingsAppearance({
   theme,
   onSelectPreset,
   onSelectAccent,
+  onSetCustomVar,
+  onSeedCustomFrom,
   onReset,
 }: {
   theme: ThemeSettings
   onSelectPreset: (preset: ThemePreset) => void
   onSelectAccent: (hex: string) => void
+  onSetCustomVar: (key: keyof CustomThemeVars, hex: string) => void
+  onSeedCustomFrom: (preset: ConcretePreset) => void
   onReset: () => void
 }) {
+  // Resolved custom vars power both the Custom card's preview swatch and the
+  // editor's current values (per-var dark fallback applies until edited).
+  const resolvedCustom = customToVars(
+    theme.custom ??
+      (theme.preset !== 'custom'
+        ? {
+            bg: PRESETS[theme.preset].vars['--color-bg'],
+            panel2: PRESETS[theme.preset].vars['--color-panel2'],
+          }
+        : undefined),
+  ).vars
+  const customActive = theme.preset === 'custom'
+
+  const tokenValue = (key: keyof CustomThemeVars): string => {
+    const cssVar = {
+      bg: '--color-bg', panel: '--color-panel', panel2: '--color-panel2',
+      line: '--color-line', fg: '--color-fg', muted: '--color-muted',
+    }[key]
+    return resolvedCustom[cssVar]
+  }
+
   return (
     <div className="space-y-6">
       <section>
         <h3 className="mb-2.5 text-xs font-semibold uppercase tracking-wider text-muted">Theme</h3>
         <div className="grid grid-cols-3 gap-2">
-          {(Object.keys(PRESETS) as Exclude<ThemePreset, 'custom'>[]).map((key) => {
+          {(Object.keys(PRESETS) as ConcretePreset[]).map((key) => {
             const preset = PRESETS[key]
             const active = theme.preset === key
             return (
@@ -41,8 +112,56 @@ export function SettingsAppearance({
               </button>
             )
           })}
+
+          <button
+            onClick={() => onSelectPreset('custom')}
+            className={
+              'flex flex-col gap-2 rounded-xl border p-2.5 text-left transition ' +
+              (customActive ? 'border-iris ring-1 ring-iris' : 'border-line hover:border-iris/50')
+            }
+          >
+            <div className="flex h-10 overflow-hidden rounded-lg border border-line">
+              <span className="w-1/2" style={{ background: resolvedCustom['--color-bg'] }} />
+              <span className="w-1/2" style={{ background: resolvedCustom['--color-panel2'] }} />
+            </div>
+            <span className="flex items-center gap-1 text-xs font-medium text-fg">
+              <SwatchBook className="h-3 w-3" />
+              Custom
+              {customActive && <Check className="h-3 w-3 text-iris" />}
+            </span>
+          </button>
         </div>
       </section>
+
+      {customActive && (
+        <section>
+          <h3 className="mb-2.5 text-xs font-semibold uppercase tracking-wider text-muted">
+            Custom colors
+          </h3>
+          <div className="space-y-2.5 rounded-xl border border-line bg-panel2/40 p-3">
+            {CUSTOM_TOKEN_LABELS.map(({ key, label }) => (
+              <TokenRow
+                key={key}
+                label={label}
+                value={tokenValue(key)}
+                onChange={(hex) => onSetCustomVar(key, hex)}
+              />
+            ))}
+            <div className="flex items-center gap-2 border-t border-line pt-2.5">
+              <span className="text-xs text-muted">Start from:</span>
+              {(Object.keys(PRESETS) as ConcretePreset[]).map((key) => (
+                <button
+                  key={key}
+                  onClick={() => onSeedCustomFrom(key)}
+                  className="rounded-full border border-line px-2.5 py-1 text-xs text-muted transition hover:border-iris/40 hover:text-fg"
+                >
+                  {PRESETS[key].label}
+                </button>
+              ))}
+            </div>
+          </div>
+        </section>
+      )}
 
       <section>
         <h3 className="mb-2.5 text-xs font-semibold uppercase tracking-wider text-muted">Accent color</h3>

@@ -66,7 +66,7 @@ function PageFallback() {
 
 export default function App() {
   const chat = useChat()
-  const { theme, setPreset, setAccent, reset } = useTheme()
+  const { theme, setPreset, setAccent, setCustomVar, seedCustomFrom, reset } = useTheme()
   const { settings: appSettings, update: updateAppSettings } = useAppSettings()
   const { prefs, setDefaultModel, toggleFavorite } = useModelPrefs()
   const pull = useModelPull(chat.refresh)
@@ -340,6 +340,8 @@ export default function App() {
         onClose={() => setSettingsOpen(false)}
         onSelectPreset={setPreset}
         onSelectAccent={setAccent}
+        onSetCustomVar={setCustomVar}
+        onSeedCustomFrom={seedCustomFrom}
         onReset={reset}
         appSettings={appSettings}
         onUpdateAppSettings={updateAppSettings}
