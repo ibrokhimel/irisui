@@ -52,7 +52,10 @@ export function useSystemMonitor({ isStreaming }: { isStreaming: boolean }): Sys
     if (!visible) return
     const ctrl = new AbortController()
     let stopped = false
+    let busy = false
     const poll = async () => {
+      if (busy) return
+      busy = true
       try {
         const snap = await fetchSystemStats(ctrl.signal)
         if (stopped) return
@@ -65,6 +68,8 @@ export function useSystemMonitor({ isStreaming }: { isStreaming: boolean }): Sys
         if (stopped || isAbortError(err)) return
         setSystem(null)
         setSystemAvailable(false)
+      } finally {
+        busy = false
       }
     }
     void poll()
@@ -82,7 +87,10 @@ export function useSystemMonitor({ isStreaming }: { isStreaming: boolean }): Sys
     if (!visible) return
     const ctrl = new AbortController()
     let stopped = false
+    let busy = false
     const poll = async () => {
+      if (busy) return
+      busy = true
       try {
         const models = await listRunningModels(ctrl.signal)
         if (stopped) return
@@ -93,6 +101,8 @@ export function useSystemMonitor({ isStreaming }: { isStreaming: boolean }): Sys
         if (stopped || isAbortError(err)) return
         setRunning([])
         setOllamaUp(false)
+      } finally {
+        busy = false
       }
     }
     void poll()
@@ -108,10 +118,14 @@ export function useSystemMonitor({ isStreaming }: { isStreaming: boolean }): Sys
   useEffect(() => {
     if (!ollamaUp) return
     let cancelled = false
-    getOllamaVersion()
+    const ctrl = new AbortController()
+    getOllamaVersion(ctrl.signal)
       .then((v) => { if (!cancelled) setOllamaVersion(v) })
-      .catch(() => { /* version is cosmetic — ignore */ })
-    return () => { cancelled = true }
+      .catch(() => { /* aborted or unreachable — version is cosmetic, stay silent */ })
+    return () => {
+      cancelled = true
+      ctrl.abort()
+    }
   }, [ollamaUp])
 
   const refresh = useCallback(() => setTick((t) => t + 1), [])
