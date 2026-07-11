@@ -9,13 +9,16 @@ import type { ChatStore, Conversation, ConversationMeta } from './store'
 
 const DB_NAME = 'irisui'
 const DB_VERSION = 4
-const META = 'conversations'
-const MSGS = 'messages'
+export const META = 'conversations'
+export const MSGS = 'messages'
 export const STATS = 'stats'
 export const KBS = 'kbs'
 export const CHUNKS = 'chunks'
 export const PERSONAS = 'personas'
 export const PROMPTS = 'prompts'
+
+/** Every object store — used to enumerate/wipe everything for backup + "Delete all data". */
+export const STORE_NAMES: string[] = [META, MSGS, STATS, KBS, CHUNKS, PERSONAS, PROMPTS]
 
 interface MsgRecord {
   id: string
@@ -107,4 +110,40 @@ export function createIdbStore(): ChatStore {
       })
     },
   }
+}
+
+// ── generic store helpers ────────────────────────────────────────────────
+// Bypass the per-store, per-shape helpers above; used by backup.ts (export /
+// import / delete-all), which treats every store as an opaque bag of records.
+
+/** Bulk read every record in `store`. */
+export function getAll<T>(db: IDBDatabase, store: string): Promise<T[]> {
+  return new Promise((resolve, reject) => {
+    const req = db.transaction(store, 'readonly').objectStore(store).getAll()
+    req.onsuccess = () => resolve(req.result as T[])
+    req.onerror = () => reject(req.error)
+  })
+}
+
+/** Bulk upsert `items` into `store` (each item's keyPath id wins ties). */
+export function putAll(db: IDBDatabase, store: string, items: unknown[]): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const t = db.transaction(store, 'readwrite')
+    const os = t.objectStore(store)
+    for (const item of items) os.put(item)
+    t.oncomplete = () => resolve()
+    t.onerror = () => reject(t.error)
+    t.onabort = () => reject(t.error)
+  })
+}
+
+/** Clear every object store — the IndexedDB half of "Delete all data". */
+export function clearAllStores(db: IDBDatabase): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const t = db.transaction(STORE_NAMES, 'readwrite')
+    for (const name of STORE_NAMES) t.objectStore(name).clear()
+    t.oncomplete = () => resolve()
+    t.onerror = () => reject(t.error)
+    t.onabort = () => reject(t.error)
+  })
 }

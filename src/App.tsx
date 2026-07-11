@@ -27,6 +27,7 @@ import { SettingsModal } from './components/SettingsModal'
 import { CommandPalette, type PaletteCommand } from './components/CommandPalette'
 import { useChat } from './hooks/useChat'
 import { useTheme } from './hooks/useTheme'
+import { useAppSettings } from './hooks/useAppSettings'
 import { useModelPrefs } from './hooks/useModelPrefs'
 import { useModelPull } from './hooks/useModelPull'
 import { useKbs } from './hooks/useKbs'
@@ -37,6 +38,7 @@ import type { Persona } from './lib/studioStore'
 export default function App() {
   const chat = useChat()
   const { theme, setPreset, setAccent, reset } = useTheme()
+  const { settings: appSettings, update: updateAppSettings } = useAppSettings()
   const { prefs, setDefaultModel, toggleFavorite } = useModelPrefs()
   const pull = useModelPull(chat.refresh)
   const { kbs, reload: reloadKbs } = useKbs()
@@ -257,6 +259,13 @@ export default function App() {
         onSelectPreset={setPreset}
         onSelectAccent={setAccent}
         onReset={reset}
+        appSettings={appSettings}
+        onUpdateAppSettings={updateAppSettings}
+        defaultModel={prefs.defaultModel}
+        onGoToModels={() => {
+          setView('models')
+          setSettingsOpen(false)
+        }}
       />
 
       <CommandPalette open={paletteOpen} commands={paletteCommands} onClose={() => setPaletteOpen(false)} />

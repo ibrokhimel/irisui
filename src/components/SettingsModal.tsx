@@ -1,9 +1,22 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { AnimatePresence, m } from 'motion/react'
-import { Check, RotateCcw, X } from 'lucide-react'
+import { Database, MessageSquare, Palette, Wifi, X } from 'lucide-react'
 import type { ThemePreset, ThemeSettings } from '../theme'
-import { ACCENTS, PRESETS, isValidHex } from '../theme'
+import type { AppSettings } from '../lib/appSettings'
 import { SPRING } from '../lib/motion'
+import { SettingsAppearance } from './SettingsAppearance'
+import { SettingsChatDefaults } from './SettingsChatDefaults'
+import { SettingsConnection } from './SettingsConnection'
+import { SettingsData } from './SettingsData'
+
+type Tab = 'appearance' | 'chat' | 'connection' | 'data'
+
+const TABS: { id: Tab; label: string; icon: typeof Palette }[] = [
+  { id: 'appearance', label: 'Appearance', icon: Palette },
+  { id: 'chat', label: 'Chat defaults', icon: MessageSquare },
+  { id: 'connection', label: 'Connection', icon: Wifi },
+  { id: 'data', label: 'Data', icon: Database },
+]
 
 export function SettingsModal({
   open,
@@ -12,6 +25,10 @@ export function SettingsModal({
   onSelectPreset,
   onSelectAccent,
   onReset,
+  appSettings,
+  onUpdateAppSettings,
+  defaultModel,
+  onGoToModels,
 }: {
   open: boolean
   theme: ThemeSettings
@@ -19,7 +36,13 @@ export function SettingsModal({
   onSelectPreset: (preset: ThemePreset) => void
   onSelectAccent: (hex: string) => void
   onReset: () => void
+  appSettings: AppSettings
+  onUpdateAppSettings: (patch: Partial<AppSettings>) => void
+  defaultModel: string
+  onGoToModels: () => void
 }) {
+  const [tab, setTab] = useState<Tab>('appearance')
+
   useEffect(() => {
     if (!open) return
     const onKey = (e: KeyboardEvent) => {
@@ -50,13 +73,13 @@ export function SettingsModal({
       />
 
       <m.div
-        className="relative w-full max-w-md overflow-hidden rounded-2xl border border-line bg-panel shadow-2xl"
+        className="relative flex max-h-[36rem] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-line bg-panel shadow-2xl"
         initial={{ opacity: 0, scale: 0.95, y: 12 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.97, y: 8 }}
         transition={SPRING}
       >
-        <div className="flex items-center justify-between border-b border-line px-5 py-4">
+        <div className="flex shrink-0 items-center justify-between border-b border-line px-5 py-4">
           <h2 className="text-base font-semibold text-fg">Settings</h2>
           <button
             onClick={onClose}
@@ -67,87 +90,55 @@ export function SettingsModal({
           </button>
         </div>
 
-        <div className="space-y-6 px-5 py-5">
-          {/* Appearance */}
-          <section>
-            <h3 className="mb-2.5 text-xs font-semibold uppercase tracking-wider text-muted">Appearance</h3>
-            <div className="grid grid-cols-3 gap-2">
-              {(Object.keys(PRESETS) as ThemePreset[]).map((key) => {
-                const preset = PRESETS[key]
-                const active = theme.preset === key
-                return (
-                  <button
-                    key={key}
-                    onClick={() => onSelectPreset(key)}
-                    className={
-                      'flex flex-col gap-2 rounded-xl border p-2.5 text-left transition ' +
-                      (active ? 'border-iris ring-1 ring-iris' : 'border-line hover:border-iris/50')
-                    }
-                  >
-                    <div className="flex h-10 overflow-hidden rounded-lg border border-line">
-                      <span className="w-1/2" style={{ background: preset.vars['--color-bg'] }} />
-                      <span className="w-1/2" style={{ background: preset.vars['--color-panel2'] }} />
-                    </div>
-                    <span className="flex items-center gap-1 text-xs font-medium text-fg">
-                      {preset.label}
-                      {active && <Check className="h-3 w-3 text-iris" />}
-                    </span>
-                  </button>
-                )
-              })}
-            </div>
-          </section>
+        <div className="flex min-h-0 flex-1">
+          <nav className="w-40 shrink-0 space-y-0.5 border-r border-line p-2.5">
+            {TABS.map((t) => {
+              const Icon = t.icon
+              const active = tab === t.id
+              return (
+                <button
+                  key={t.id}
+                  onClick={() => setTab(t.id)}
+                  className={
+                    'flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm font-medium transition ' +
+                    (active ? 'bg-iris/10 text-iris' : 'text-muted hover:bg-panel2 hover:text-fg')
+                  }
+                >
+                  <Icon className="h-4 w-4 shrink-0" />
+                  {t.label}
+                </button>
+              )
+            })}
+          </nav>
 
-          {/* Accent */}
-          <section>
-            <h3 className="mb-2.5 text-xs font-semibold uppercase tracking-wider text-muted">Accent color</h3>
-            <div className="flex flex-wrap items-center gap-2.5">
-              {ACCENTS.map((swatch) => {
-                const active = theme.accent.toLowerCase() === swatch.value.toLowerCase()
-                return (
-                  <button
-                    key={swatch.value}
-                    onClick={() => onSelectAccent(swatch.value)}
-                    title={swatch.name}
-                    aria-label={swatch.name}
-                    className="flex h-8 w-8 items-center justify-center rounded-full transition hover:scale-110"
-                    style={{
-                      backgroundColor: swatch.value,
-                      boxShadow: active
-                        ? '0 0 0 2px var(--color-panel), 0 0 0 4px ' + swatch.value
-                        : undefined,
-                    }}
-                  >
-                    {active && <Check className="h-4 w-4 text-white" />}
-                  </button>
-                )
-              })}
-
-              <label className="flex h-8 cursor-pointer items-center gap-2 rounded-full border border-line px-3 text-xs text-muted transition hover:border-iris/50 hover:text-fg">
-                Custom
-                <input
-                  type="color"
-                  value={isValidHex(theme.accent) ? theme.accent : '#c96442'}
-                  onChange={(e) => onSelectAccent(e.target.value)}
-                  className="h-4 w-4 cursor-pointer border-0 bg-transparent p-0"
-                  aria-label="Custom accent color"
-                />
-              </label>
-            </div>
-          </section>
-
-          <div className="flex items-center justify-between border-t border-line pt-4">
-            <button
-              onClick={onReset}
-              className="flex items-center gap-1.5 text-xs text-muted transition hover:text-fg"
-            >
-              <RotateCcw className="h-3.5 w-3.5" />
-              Reset to default
-            </button>
-            <button onClick={onClose} className="btn-primary rounded-lg px-4 py-2 text-sm font-medium shadow-sm">
-              Done
-            </button>
+          <div className="min-w-0 flex-1 overflow-y-auto px-5 py-5">
+            {tab === 'appearance' && (
+              <SettingsAppearance
+                theme={theme}
+                onSelectPreset={onSelectPreset}
+                onSelectAccent={onSelectAccent}
+                onReset={onReset}
+              />
+            )}
+            {tab === 'chat' && (
+              <SettingsChatDefaults
+                settings={appSettings}
+                onUpdate={onUpdateAppSettings}
+                defaultModel={defaultModel}
+                onGoToModels={onGoToModels}
+              />
+            )}
+            {tab === 'connection' && (
+              <SettingsConnection settings={appSettings} onUpdate={onUpdateAppSettings} />
+            )}
+            {tab === 'data' && <SettingsData />}
           </div>
+        </div>
+
+        <div className="flex shrink-0 items-center justify-end border-t border-line px-5 py-3.5">
+          <button onClick={onClose} className="btn-primary rounded-lg px-4 py-2 text-sm font-medium shadow-sm">
+            Done
+          </button>
         </div>
       </m.div>
     </m.div>

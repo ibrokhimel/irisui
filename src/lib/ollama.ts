@@ -1,16 +1,26 @@
 import type { OllamaModel } from '../types'
+import { loadAppSettings } from './appSettings'
 
 /**
- * In dev we go through the Vite proxy (`/ollama` -> http://localhost:11434),
- * which makes every request same-origin and sidesteps CORS entirely. A future
- * production build would talk to Ollama directly.
+ * Base URL for every Ollama request. A custom host configured in Settings
+ * always wins — even in dev — so pointing at a remote/LAN Ollama instance
+ * bypasses the dev proxy entirely (the caller is on their own for CORS via
+ * OLLAMA_ORIGINS). Otherwise dev goes through the Vite proxy (`/ollama` ->
+ * http://localhost:11434), which makes every request same-origin and
+ * sidesteps CORS entirely; a production build without a custom host talks to
+ * the default local port directly. Read fresh on every call (not cached at
+ * import time) so a Settings change takes effect immediately.
  */
-const OLLAMA_BASE = import.meta.env.DEV ? '/ollama' : 'http://localhost:11434'
+export function getOllamaBase(): string {
+  const custom = loadAppSettings().ollamaUrl.trim()
+  if (custom) return custom.replace(/\/+$/, '')
+  return import.meta.env.DEV ? '/ollama' : 'http://localhost:11434'
+}
 const JSON_HEADERS = { 'Content-Type': 'application/json' }
 
 /** GET /api/tags — list installed models. Throws if Ollama is unreachable. */
 export async function fetchModels(signal?: AbortSignal): Promise<OllamaModel[]> {
-  const res = await fetch(`${OLLAMA_BASE}/api/tags`, { signal })
+  const res = await fetch(`${getOllamaBase()}/api/tags`, { signal })
   if (!res.ok) throw new Error(`Ollama responded with ${res.status}`)
   const data: unknown = await res.json()
   const models = (data as { models?: unknown })?.models
@@ -42,7 +52,7 @@ export interface StreamChatParams {
 export async function streamChat(params: StreamChatParams): Promise<ChatStreamResult> {
   const { model, messages, temperature, signal, onToken } = params
 
-  const res = await fetch(`${OLLAMA_BASE}/api/chat`, {
+  const res = await fetch(`${getOllamaBase()}/api/chat`, {
     method: 'POST',
     headers: JSON_HEADERS,
     body: JSON.stringify({ model, stream: true, messages, options: { temperature } }),
@@ -87,7 +97,7 @@ export async function pullModel(opts: {
   onProgress: (p: PullProgress) => void
 }): Promise<void> {
   const { name, signal, onProgress } = opts
-  const res = await fetch(`${OLLAMA_BASE}/api/pull`, {
+  const res = await fetch(`${getOllamaBase()}/api/pull`, {
     method: 'POST',
     headers: JSON_HEADERS,
     body: JSON.stringify({ name, model: name, stream: true }),
@@ -108,7 +118,7 @@ export async function pullModel(opts: {
 
 /** DELETE /api/delete — remove a model from disk. */
 export async function deleteModel(name: string): Promise<void> {
-  const res = await fetch(`${OLLAMA_BASE}/api/delete`, {
+  const res = await fetch(`${getOllamaBase()}/api/delete`, {
     method: 'DELETE',
     headers: JSON_HEADERS,
     body: JSON.stringify({ name, model: name }),
@@ -126,7 +136,7 @@ export interface ModelDetails {
 
 /** POST /api/show — full metadata for one model. */
 export async function showModel(name: string): Promise<ModelDetails> {
-  const res = await fetch(`${OLLAMA_BASE}/api/show`, {
+  const res = await fetch(`${getOllamaBase()}/api/show`, {
     method: 'POST',
     headers: JSON_HEADERS,
     body: JSON.stringify({ name, model: name }),
@@ -155,7 +165,7 @@ export async function benchmarkModel(opts: {
   let evalCount = 0
   let evalDuration = 0
 
-  const res = await fetch(`${OLLAMA_BASE}/api/generate`, {
+  const res = await fetch(`${getOllamaBase()}/api/generate`, {
     method: 'POST',
     headers: JSON_HEADERS,
     body: JSON.stringify({
@@ -195,7 +205,7 @@ export async function benchmarkModel(opts: {
  * array throws rather than silently returning garbage vectors.
  */
 export async function embedTexts(model: string, texts: string[]): Promise<number[][]> {
-  const res = await fetch(`${OLLAMA_BASE}/api/embed`, {
+  const res = await fetch(`${getOllamaBase()}/api/embed`, {
     method: 'POST',
     headers: JSON_HEADERS,
     body: JSON.stringify({ model, input: texts }),
