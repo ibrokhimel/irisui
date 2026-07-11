@@ -18,7 +18,7 @@ export function SettingsAppearance({
       <section>
         <h3 className="mb-2.5 text-xs font-semibold uppercase tracking-wider text-muted">Theme</h3>
         <div className="grid grid-cols-3 gap-2">
-          {(Object.keys(PRESETS) as ThemePreset[]).map((key) => {
+          {(Object.keys(PRESETS) as Exclude<ThemePreset, 'custom'>[]).map((key) => {
             const preset = PRESETS[key]
             const active = theme.preset === key
             return (
