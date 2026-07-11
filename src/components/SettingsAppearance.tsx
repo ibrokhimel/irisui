@@ -46,14 +46,18 @@ function TokenRow({
   // blur. Typing alone never changes `value` (only onChange does), so this
   // only fires on an external change, keeping in-progress typing intact.
   useEffect(() => {
-    if (value !== lastCommitted.current) {
+    if (value.toLowerCase() !== lastCommitted.current) {
       setDraft(null)
     }
   }, [value])
 
   const commit = (raw: string) => {
     const hex = toHex(raw)
-    lastCommitted.current = hex
+    // Store lowercased: `value` comes back through theme.ts's normalizeHex,
+    // which lowercases, so comparing against the raw (possibly uppercase)
+    // committed string would misclassify this row's own echo as an external
+    // change for any hex containing A-F and wrongly clear the live draft.
+    lastCommitted.current = hex.toLowerCase()
     onChange(hex)
   }
 
@@ -80,7 +84,7 @@ function TokenRow({
           type="color"
           value={value}
           onChange={(e) => {
-            lastCommitted.current = e.target.value
+            lastCommitted.current = e.target.value.toLowerCase()
             onChange(e.target.value)
             setDraft(null)
           }}
