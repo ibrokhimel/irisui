@@ -129,19 +129,30 @@ export function createSnapshotCache<T>(
 
 const getSnapshot = createSnapshotCache(collect, 1000)
 
-function middleware(req: IncomingMessage, res: ServerResponse, next: () => void): void {
-  if (!req.url?.startsWith('/api/system')) return next()
-  getSnapshot()
-    .then((body) => {
-      res.setHeader('Content-Type', 'application/json')
-      res.setHeader('Cache-Control', 'no-store')
-      res.end(body)
-    })
-    .catch(() => {
-      res.statusCode = 500
-      res.end('{}')
-    })
+/**
+ * Builds the `/api/system` request handler. `snapshotFn` defaults to the
+ * module's shared 1s cache (production behavior); tests inject a fake to
+ * exercise the response/error branches without touching `nvidia-smi`.
+ */
+export function createSystemStatsMiddleware(
+  snapshotFn: () => Promise<string> = getSnapshot,
+) {
+  return function middleware(req: IncomingMessage, res: ServerResponse, next: () => void): void {
+    if (!req.url?.startsWith('/api/system')) return next()
+    snapshotFn()
+      .then((body) => {
+        res.setHeader('Content-Type', 'application/json')
+        res.setHeader('Cache-Control', 'no-store')
+        res.end(body)
+      })
+      .catch(() => {
+        res.statusCode = 500
+        res.end('{}')
+      })
+  }
 }
+
+const middleware = createSystemStatsMiddleware()
 
 export function systemStatsPlugin(): Plugin {
   return {

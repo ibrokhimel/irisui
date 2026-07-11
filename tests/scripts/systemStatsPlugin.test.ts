@@ -1,5 +1,23 @@
 import { describe, expect, it, vi } from 'vitest'
-import { createSnapshotCache, cpuUtilBetween, parseNvidiaSmi } from '../../scripts/systemStatsPlugin'
+import type { IncomingMessage, ServerResponse } from 'node:http'
+import {
+  createSnapshotCache,
+  createSystemStatsMiddleware,
+  cpuUtilBetween,
+  parseNvidiaSmi,
+} from '../../scripts/systemStatsPlugin'
+
+/** Minimal fake req/res for exercising middleware() without a real HTTP server. */
+function fakeReqRes(url: string) {
+  const req = { url } as IncomingMessage
+  const res = {
+    statusCode: 200,
+    setHeader: vi.fn(),
+    end: vi.fn(),
+  } as unknown as ServerResponse
+  const next = vi.fn()
+  return { req, res, next }
+}
 
 /** A promise plus its resolve/reject, for controlling settlement from the test. */
 function deferred<T>() {
@@ -107,5 +125,47 @@ describe('createSnapshotCache', () => {
     await expect(getSnapshot()).rejects.toThrow('boom')
     await expect(getSnapshot()).resolves.toBe('recovered')
     expect(collect).toHaveBeenCalledTimes(2)
+  })
+})
+
+describe('middleware (createSystemStatsMiddleware)', () => {
+  it('calls next() and does not respond for a non-matching URL', async () => {
+    const snapshotFn = vi.fn(async () => '{"ok":true}')
+    const middleware = createSystemStatsMiddleware(snapshotFn)
+    const { req, res, next } = fakeReqRes('/api/other')
+
+    middleware(req, res, next)
+    await Promise.resolve() // flush any microtasks in case a promise chain was started
+
+    expect(next).toHaveBeenCalledTimes(1)
+    expect(snapshotFn).not.toHaveBeenCalled()
+    expect(res.end).not.toHaveBeenCalled()
+  })
+
+  it('responds with the JSON snapshot body and the expected headers for /api/system', async () => {
+    const snapshotFn = vi.fn(async () => '{"gpu":null}')
+    const middleware = createSystemStatsMiddleware(snapshotFn)
+    const { req, res, next } = fakeReqRes('/api/system')
+
+    middleware(req, res, next)
+    await new Promise((r) => setTimeout(r, 0)) // let the snapshot promise resolve
+
+    expect(next).not.toHaveBeenCalled()
+    expect(res.setHeader).toHaveBeenCalledWith('Content-Type', 'application/json')
+    expect(res.setHeader).toHaveBeenCalledWith('Cache-Control', 'no-store')
+    expect(res.end).toHaveBeenCalledWith('{"gpu":null}')
+  })
+
+  it('responds 500 with {} when the snapshot rejects, without an unhandled rejection', async () => {
+    const snapshotFn = vi.fn(async () => { throw new Error('nvidia-smi exploded') })
+    const middleware = createSystemStatsMiddleware(snapshotFn)
+    const { req, res, next } = fakeReqRes('/api/system')
+
+    middleware(req, res, next)
+    await new Promise((r) => setTimeout(r, 0))
+
+    expect(next).not.toHaveBeenCalled()
+    expect(res.statusCode).toBe(500)
+    expect(res.end).toHaveBeenCalledWith('{}')
   })
 })
