@@ -39,6 +39,8 @@ export function ChatInput({
   onSelectKb,
   ragNotice,
   onDismissRagNotice,
+  persona,
+  onClearPersona,
 }: {
   variant: 'hero' | 'docked'
   input: string
@@ -60,6 +62,8 @@ export function ChatInput({
   onSelectKb: (id: string | undefined) => void
   ragNotice: boolean
   onDismissRagNotice: () => void
+  persona?: { icon: string; name: string }
+  onClearPersona: () => void
 }) {
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const [controlsOpen, setControlsOpen] = useState(false)
@@ -296,8 +300,19 @@ export function ChatInput({
               </AnimatePresence>
             </div>
 
-            {/* Right cluster: model picker + send */}
+            {/* Right cluster: persona chip + model picker + send */}
             <div className="ml-auto flex items-center gap-1.5">
+              {persona && (
+                <button
+                  onClick={onClearPersona}
+                  title={`Persona: ${persona.name} — click to clear`}
+                  className="flex items-center gap-1.5 rounded-lg border border-iris/30 bg-iris/10 px-2 py-1.5 text-xs font-medium text-iris transition hover:border-iris/50"
+                >
+                  <span className="text-sm leading-none">{persona.icon}</span>
+                  <span className="max-w-[100px] truncate">{persona.name}</span>
+                  <X className="h-3 w-3" />
+                </button>
+              )}
               <div className="flex items-center gap-1.5 rounded-lg px-2 py-1.5 transition hover:bg-panel">
                 <span className={'h-1.5 w-1.5 shrink-0 rounded-full ' + STATUS_DOT[status]} />
                 <div className="relative flex items-center">

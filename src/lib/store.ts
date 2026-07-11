@@ -19,6 +19,9 @@ export interface ConversationMeta {
   /** Attached knowledge base for RAG-grounded replies. Optional so
    *  conversations persisted before v0.8 load without migration. */
   kbId?: string
+  /** Persona whose system prompt drives this chat. Optional so
+   *  conversations persisted before v0.9 load without migration. */
+  personaId?: string
 }
 
 export interface Conversation extends ConversationMeta {

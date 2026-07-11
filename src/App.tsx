@@ -8,6 +8,7 @@ import { MessageList } from './components/MessageList'
 import { ChatInput } from './components/ChatInput'
 import { ModelsPage } from './components/ModelsPage'
 import { KnowledgePage } from './components/KnowledgePage'
+import { StudioPage } from './components/StudioPage'
 import { StatsPage } from './components/StatsPage'
 import { SettingsModal } from './components/SettingsModal'
 import { useChat } from './hooks/useChat'
@@ -15,6 +16,8 @@ import { useTheme } from './hooks/useTheme'
 import { useModelPrefs } from './hooks/useModelPrefs'
 import { useModelPull } from './hooks/useModelPull'
 import { useKbs } from './hooks/useKbs'
+import { useStudio } from './hooks/useStudio'
+import type { Persona } from './lib/studioStore'
 
 export default function App() {
   const chat = useChat()
@@ -22,9 +25,10 @@ export default function App() {
   const { prefs, setDefaultModel, toggleFavorite } = useModelPrefs()
   const pull = useModelPull(chat.refresh)
   const { kbs, reload: reloadKbs } = useKbs()
+  const { personas, prompts, reload: reloadStudio } = useStudio()
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(true)
-  const [view, setView] = useState<'chat' | 'models' | 'knowledge' | 'stats'>('chat')
+  const [view, setView] = useState<'chat' | 'models' | 'knowledge' | 'studio' | 'stats'>('chat')
 
   const empty = chat.messages.length === 0
 
@@ -48,6 +52,16 @@ export default function App() {
     void chat.selectChat(id)
     openChat()
   }
+  const handleChatWithPersona = (persona: Persona) => {
+    chat.newChatWithPersona(persona)
+    openChat()
+  }
+  const handleUsePrompt = (text: string) => {
+    chat.setInput(text)
+    openChat()
+  }
+
+  const activePersona = personas.find((p) => p.id === chat.personaId)
 
   const composerProps = {
     input: chat.input,
@@ -69,6 +83,8 @@ export default function App() {
     onSelectKb: chat.setKb,
     ragNotice: chat.ragNotice,
     onDismissRagNotice: chat.dismissRagNotice,
+    persona: activePersona ? { icon: activePersona.icon, name: activePersona.name } : undefined,
+    onClearPersona: chat.clearPersona,
   }
 
   // Keyed view swap: chat home / conversation / models / stats cross-fade.
@@ -88,6 +104,7 @@ export default function App() {
         onNewChat={handleNewChat}
         onOpenModels={() => setView('models')}
         onOpenKnowledge={() => setView('knowledge')}
+        onOpenStudio={() => setView('studio')}
         onOpenStats={() => setView('stats')}
         pullActive={pull.pulling}
         pullPercent={pullPercent}
@@ -107,11 +124,15 @@ export default function App() {
               ? 'Models'
               : view === 'knowledge'
                 ? 'Knowledge'
-                : view === 'stats'
-                  ? 'Stats'
-                  : chat.title
+                : view === 'studio'
+                  ? 'Studio'
+                  : view === 'stats'
+                    ? 'Stats'
+                    : chat.title
           }
-          showTitle={view === 'models' || view === 'knowledge' || view === 'stats' || !empty}
+          showTitle={
+            view === 'models' || view === 'knowledge' || view === 'studio' || view === 'stats' || !empty
+          }
         />
 
         <AnimatePresence mode="wait" initial={false}>
@@ -140,6 +161,15 @@ export default function App() {
                 kbs={kbs}
                 onChanged={reloadKbs}
                 pull={pull}
+              />
+            ) : view === 'studio' ? (
+              <StudioPage
+                models={chat.models}
+                personas={personas}
+                prompts={prompts}
+                onChanged={reloadStudio}
+                onChatWithPersona={handleChatWithPersona}
+                onUsePrompt={handleUsePrompt}
               />
             ) : view === 'stats' ? (
               <StatsPage />

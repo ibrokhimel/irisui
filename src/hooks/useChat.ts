@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { ChatMessage, Effort, OllamaModel, OllamaStatus } from '../types'
-import { DEFAULT_TEMPERATURE, EFFORT_PROMPTS } from '../constants'
+import { DEFAULT_TEMPERATURE } from '../constants'
 import { fetchModels, isAbortError, streamChat } from '../lib/ollama'
 import { getStore } from '../lib/store'
 import type { Conversation, ConversationMeta } from '../lib/store'
@@ -12,6 +12,8 @@ import type { MessageStat } from '../lib/stats'
 import { addStat } from '../lib/statsStore'
 import { retrieveContext } from '../lib/retrieve'
 import type { RagContext } from '../lib/retrieve'
+import { resolveSystemPrompt } from '../lib/personaPrompt'
+import type { Persona } from '../lib/studioStore'
 
 function newConversation(model: string): Conversation {
   const now = Date.now()
@@ -59,6 +61,7 @@ function metaOf(c: Conversation): ConversationMeta {
     effort: c.effort,
     temperature: c.temperature,
     kbId: c.kbId,
+    personaId: c.personaId,
   }
 }
 
@@ -179,9 +182,11 @@ export function useChat() {
 
       const controller = new AbortController()
       abortRef.current = controller
+
+      const systemPrompt = await resolveSystemPrompt(base)
       const apiMessages = [
-        { role: 'system', content: EFFORT_PROMPTS[base.effort] },
-        // Retrieved source excerpts, injected right after the effort prompt.
+        { role: 'system', content: systemPrompt },
+        // Retrieved source excerpts, injected right after the system prompt.
         ...(context ? [{ role: 'system', content: context.systemMessage }] : []),
         ...history.map((m) => ({ role: m.role, content: m.content })),
       ]
@@ -329,6 +334,7 @@ export function useChat() {
     },
     [patchCurrent],
   )
+  const clearPersona = useCallback(() => patchCurrent({ personaId: undefined }), [patchCurrent])
   const dismissRagNotice = useCallback(() => setRagNotice(false), [])
 
   // ── conversation management ──
@@ -344,6 +350,31 @@ export function useChat() {
     setCurrent(newConversation(model))
     setInput('')
   }, [models])
+
+  /** New chat carrying a persona's id and its defaults (model if installed, effort, temperature). */
+  const newChatWithPersona = useCallback(
+    (persona: Persona) => {
+      abortRef.current?.abort()
+      setRagNotice(false)
+      const pref = loadModelPrefs().defaultModel
+      const chatable = models.filter((m) => !isLikelyEmbeddingModel(m.name))
+      const model =
+        persona.defaultModel && models.some((m) => m.name === persona.defaultModel)
+          ? persona.defaultModel
+          : pref && models.some((m) => m.name === pref)
+            ? pref
+            : chatable[0]?.name || models[0]?.name || ''
+      const conv = newConversation(model)
+      setCurrent({
+        ...conv,
+        personaId: persona.id,
+        effort: persona.defaultEffort ?? conv.effort,
+        temperature: persona.defaultTemperature ?? conv.temperature,
+      })
+      setInput('')
+    },
+    [models],
+  )
 
   const selectChat = useCallback(
     async (id: string) => {
@@ -427,6 +458,7 @@ export function useChat() {
     effort: current.effort,
     temperature: current.temperature,
     kbId: current.kbId,
+    personaId: current.personaId,
     // history
     metas,
     search,
@@ -442,12 +474,14 @@ export function useChat() {
     setEffort,
     setTemperature,
     setKb,
+    clearPersona,
     // actions
     send,
     stop,
     regenerate,
     continueResponse,
     newChat,
+    newChatWithPersona,
     selectChat,
     renameChat,
     deleteChat,
