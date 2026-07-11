@@ -1,12 +1,15 @@
 /**
  * Live model discovery via the public Hugging Face API. We query GGUF models
  * (the format Ollama can run), which the user can install directly with
- * `ollama pull hf.co/<repo>`. In dev the request goes through the Vite `/hf`
- * proxy so it is same-origin (no CORS).
+ * `ollama pull hf.co/<repo>`. Requests go out through appFetch, which in the
+ * desktop shell issues them from Rust — no browser origin, so CORS never
+ * applies and huggingface.co can be hit directly.
  *
  * HF paginates with a cursor in the `Link: rel="next"` response header; we
  * follow that to load more results as the user scrolls.
  */
+import { appFetch } from './http'
+
 export interface HFModel {
   id: string
   downloads: number
@@ -18,7 +21,7 @@ export interface HFPage {
   nextUrl: string | null
 }
 
-const HF_BASE = import.meta.env.DEV ? '/hf' : 'https://huggingface.co'
+const HF_BASE = 'https://huggingface.co'
 
 function buildSearchUrl(query: string): string {
   const params = new URLSearchParams({
@@ -32,28 +35,17 @@ function buildSearchUrl(query: string): string {
   return `${HF_BASE}/api/models?${params.toString()}`
 }
 
-/** Turn an absolute huggingface.co URL (from the Link header) into a request URL. */
-function toRequestUrl(absolute: string): string {
-  if (!import.meta.env.DEV) return absolute
-  try {
-    const u = new URL(absolute)
-    return `/hf${u.pathname}${u.search}`
-  } catch {
-    return absolute
-  }
-}
-
 function parseNext(linkHeader: string | null): string | null {
   if (!linkHeader) return null
   for (const part of linkHeader.split(',')) {
     const m = part.match(/<([^>]+)>\s*;\s*rel="next"/)
-    if (m) return toRequestUrl(m[1])
+    if (m) return m[1]
   }
   return null
 }
 
 async function fetchPage(url: string, signal?: AbortSignal): Promise<HFPage> {
-  const res = await fetch(url, { signal, headers: { Accept: 'application/json' } })
+  const res = await appFetch(url, { signal, headers: { Accept: 'application/json' } })
   if (!res.ok) throw new Error(`Hugging Face responded with ${res.status}`)
 
   const data: unknown = await res.json()
