@@ -21,12 +21,50 @@
 - Tasks 2 and 3 are **gates**: on FAIL, stop and revise the plan with the user — do not push through.
 - The two spike apps are throwaway: they live in the scratchpad, are never committed, and only their verdicts (recorded in the Spike Results section below) persist.
 
-## Spike Results (fill in during Tasks 2–3)
+## Execution status (live)
 
-| Spike | Verdict | Notes |
+| Task | State | Commit |
 |---|---|---|
-| 1. Ollama streaming via plugin-http | ☐ GO / ☐ NO-GO | chunks: __, spread: __ ms, abort latency: __ ms |
-| 2. Module import over custom protocol, shared React | ☐ GO / ☐ NO-GO | hooks worked: __, theme var read: __ |
+| 1. Preflight | ✅ done | `9d83167` |
+| 2. Spike: Ollama streaming | ⏸ **folded into Task 6's verify** — see note below | — |
+| 3. Spike: module loading | ⏸ **deferred to the M3 plan** — see note below | — |
+| 4. Scaffold Tauri | ✅ files written, **compile unverified** (blocked on MSVC) | `76e1d31` |
+| 5. `appFetch` | ✅ done, 3 tests | `8d6acae` |
+| 6. Ollama/HF transport | ✅ done, suite green unchanged | `d58c69d` |
+| 7. `/api/system` → Rust | ✅ TS done, 2 tests; **Rust compile unverified** | `c2a79b4` |
+| 8. Whisper runtime smoke | ⛔ blocked — needs a running desktop build | — |
+| 9. First-run migration notice | ✅ done, 3 tests | `2f33f9b` |
+| 10. v2.0.0 build + DoD | ⛔ blocked — needs MSVC toolchain | — |
+
+Suite at time of writing: **238 tests / 29 files, all passing.** `tsc --noEmit` clean.
+
+### Deviation 1 — Spike 1 folded into Task 6 rather than run as a throwaway app
+
+The spike's purpose was to prove `tauri-plugin-http` streams before committing to
+it. But `appFetch` (`src/lib/http.ts`) is the correct abstraction *regardless* of
+the answer: if plugin-http cannot stream, only `appFetch`'s internals change — it
+swaps to a Rust command emitting chunks over a `tauri::ipc::Channel`, and not one
+call site moves. So the gate was folded into Task 6's real-app verification
+instead of paying for a separate scaffold. **The gate itself still stands and is
+still unmet**: streaming must be confirmed token-by-token in the desktop build
+before v2.0 ships, and it is a DoD item in Task 10.
+
+### Deviation 2 — Spike 2 deferred to the M3 plan
+
+Loading a module over a custom protocol with a shared React instance gates the
+**IrisOS module loader (M3)**. It does not gate the Tauri migration: M1 ships one
+bundled app with no modules in it. Running it here would have de-risked work that
+is two plans away, at the cost of blocking work that is due now. It moves to the
+M3 plan, where it remains a hard gate.
+
+### Environment findings (2026-07-11)
+
+- Rust was **absent**. Installed rustup → `cargo 1.97.0`.
+- MSVC C++ build tools and the Windows SDK were **absent** — `cargo build` cannot
+  link without them. Installing `Microsoft.VisualStudio.2022.BuildTools` with the
+  VCTools workload; this is the long pole and blocks Tasks 8 and 10.
+- WebView2 runtime **present** (150.0.4078.65) — ships with Windows 11.
+- Ollama up, `qwen2.5:0.5b` available for the streaming check.
 
 ---
 
