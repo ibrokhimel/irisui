@@ -29,6 +29,12 @@ function pickMimeType(): string | undefined {
  * the stereo→mono downmix per the Web Audio spec's standard channel rules.
  */
 async function decodeToMonoFloat32(blob: Blob, targetRate: number): Promise<Float32Array> {
+  // Tapping the mic on and straight back off records nothing, and
+  // decodeAudioData rejects with an opaque EncodingError on a zero-byte
+  // buffer. Silence isn't an error — hand back empty audio and let the caller
+  // treat it as "nothing was said" rather than surfacing a browser exception.
+  if (blob.size === 0) return new Float32Array(0)
+
   const AudioCtx =
     window.AudioContext ||
     (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext
@@ -74,10 +80,18 @@ export async function startRecording(): Promise<Recorder> {
     async stop() {
       if (settled) throw new Error('Recorder already stopped.')
       settled = true
-      mediaRecorder.stop()
-      const blob = await blobPromise
-      releaseMic()
-      return decodeToMonoFloat32(blob, WHISPER_SAMPLE_RATE)
+      try {
+        // stop() throws InvalidStateError if the recorder already went
+        // inactive on its own (mic unplugged, permission revoked mid-session).
+        // Releasing the mic must happen regardless, or the browser's recording
+        // indicator stays lit for the rest of the session — cancel() already
+        // guards this; stop() must too.
+        if (mediaRecorder.state !== 'inactive') mediaRecorder.stop()
+        const blob = await blobPromise
+        return await decodeToMonoFloat32(blob, WHISPER_SAMPLE_RATE)
+      } finally {
+        releaseMic()
+      }
     },
     cancel() {
       if (settled) return

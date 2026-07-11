@@ -335,7 +335,6 @@ export function useChat() {
     (temperature: number) => patchCurrent({ temperature }),
     [patchCurrent],
   )
-  const setNumCtx = useCallback((numCtx: number) => patchCurrent({ numCtx }), [patchCurrent])
   const setKb = useCallback(
     (kbId: string | undefined) => {
       setRagNotice(false)
@@ -483,7 +482,6 @@ export function useChat() {
     setSelectedModel,
     setEffort,
     setTemperature,
-    setNumCtx,
     setKb,
     clearPersona,
     // actions

@@ -51,35 +51,64 @@ function createWorkerHandle(modelId: string, onProgress?: (pct: number) => void)
   return { modelId, worker, ready }
 }
 
-/** Loads (or reuses) the worker for `modelId`. Switching models tears down the old worker. */
+/**
+ * Loads (or reuses) the worker for `modelId`. Switching models tears down the
+ * old worker.
+ *
+ * A FAILED load must never be cached. The `ready` promise is memoized on the
+ * handle, so keeping a rejected one around would make every subsequent attempt
+ * replay the original error forever — bricking on-device voice for the life of
+ * the page after a single transient hiccup (offline, HF blip), which is exactly
+ * the situation the local engine exists to rescue. On rejection we tear the
+ * handle down so the next click gets a genuinely fresh attempt.
+ */
 export async function loadWhisper(
   modelId: string = DEFAULT_ASR_MODEL,
   onProgress?: (pct: number) => void,
 ): Promise<void> {
   if (current?.modelId === modelId) {
-    await current.ready
-    return
+    try {
+      await current.ready
+      return
+    } catch (err) {
+      disposeWhisper()
+      throw err
+    }
   }
   disposeWhisper()
-  current = createWorkerHandle(modelId, onProgress)
-  await current.ready
+  const handle = createWorkerHandle(modelId, onProgress)
+  current = handle
+  try {
+    await handle.ready
+  } catch (err) {
+    // Only dispose if nothing else has replaced this handle in the meantime.
+    if (current === handle) disposeWhisper()
+    throw err
+  }
 }
+
+/** Rejectors for in-flight transcriptions, so disposeWhisper can settle them. */
+let pendingTranscriptions = new Set<(err: Error) => void>()
 
 export async function transcribe(audio: Float32Array): Promise<string> {
   if (!current) throw new Error('Whisper model is not loaded. Call loadWhisper() first.')
   const worker = current.worker
   return new Promise<string>((resolve, reject) => {
+    const settle = (fn: () => void) => {
+      worker.removeEventListener('message', onMessage)
+      pendingTranscriptions.delete(reject)
+      fn()
+    }
     const onMessage = (event: MessageEvent<WorkerOutMessage>) => {
       const msg = event.data
-      if (msg.type === 'result') {
-        worker.removeEventListener('message', onMessage)
-        resolve(msg.text)
-      } else if (msg.type === 'error') {
-        worker.removeEventListener('message', onMessage)
-        reject(new Error(msg.message))
-      }
+      if (msg.type === 'result') settle(() => resolve(msg.text))
+      else if (msg.type === 'error') settle(() => reject(new Error(msg.message)))
       // 'progress'/'ready' can't occur here — those only fire during 'load'.
     }
+    // A terminated worker can never post back, so without this the promise
+    // would hang forever and leave the UI stuck in its 'transcribing' state
+    // (which disables the mic button — an unrecoverable wedge).
+    pendingTranscriptions.add(reject)
     worker.addEventListener('message', onMessage)
     // Transfer the buffer instead of structured-cloning it — recordings can
     // be several MB of Float32 samples, and the caller has no further use
@@ -92,4 +121,7 @@ export function disposeWhisper(): void {
   if (!current) return
   current.worker.terminate()
   current = null
+  const rejectors = pendingTranscriptions
+  pendingTranscriptions = new Set()
+  for (const reject of rejectors) reject(new Error('Transcription was cancelled.'))
 }

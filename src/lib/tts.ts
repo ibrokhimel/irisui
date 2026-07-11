@@ -18,21 +18,28 @@ function stripMarkdown(text: string): string {
 
 /**
  * Chrome resolves voices asynchronously — `getVoices()` often returns `[]` on
- * the very first call, filling in only once `voiceschanged` fires. The list
- * is cached so later callers within the same page life don't re-race it.
+ * the very first call, filling in only once `voiceschanged` fires. Keep a warm
+ * cache so a `speak()` that lands during that window still finds the user's
+ * chosen voice.
+ *
+ * The subscription is installed once at module load via addEventListener,
+ * NOT from inside listVoices(): assigning `speechSynthesis.onvoiceschanged`
+ * there would clobber any other handler, and a getter that mutates global
+ * state is a footgun. Components that need to re-render on arrival subscribe
+ * themselves (see SettingsVoice).
  */
 let cachedVoices: SpeechSynthesisVoice[] = []
+
+if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+  window.speechSynthesis.addEventListener('voiceschanged', () => {
+    cachedVoices = window.speechSynthesis.getVoices()
+  })
+}
 
 export function listVoices(): SpeechSynthesisVoice[] {
   if (!isSpeechSynthesisSupported()) return []
   const voices = window.speechSynthesis.getVoices()
-  if (voices.length > 0) {
-    cachedVoices = voices
-  } else if (cachedVoices.length === 0) {
-    window.speechSynthesis.onvoiceschanged = () => {
-      cachedVoices = window.speechSynthesis.getVoices()
-    }
-  }
+  if (voices.length > 0) cachedVoices = voices
   return voices.length > 0 ? voices : cachedVoices
 }
 

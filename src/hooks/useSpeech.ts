@@ -110,6 +110,9 @@ export function useSpeechInput(onTranscript: (text: string, isFinal: boolean) =>
     setStatus('transcribing')
     try {
       const audio = await recorder.stop()
+      // An accidental double-tap of the mic records nothing. Whisper would
+      // happily hallucinate a phrase out of pure silence, so don't ask it.
+      if (audio.length === 0) return
       const text = await transcribeWithWhisper(audio)
       onTranscriptRef.current(text, true)
     } catch (err) {

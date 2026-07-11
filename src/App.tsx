@@ -77,9 +77,21 @@ export default function App() {
   )
 
   const empty = chat.messages.length === 0
-  // The context meter is measured, never estimated — the last assistant
-  // message's stat is the only source of "what the next turn actually carries".
-  const lastAssistantStat = [...chat.messages].reverse().find((m) => m.role === 'assistant')?.stat
+  // The context meter is measured, never estimated — an assistant message's
+  // stat is the only source of "what the next turn actually carries".
+  //
+  // Must skip assistant messages that have no stat yet, not just take the last
+  // one: the in-flight reply is appended with `stat: undefined` and only gets
+  // one when the stream finishes, so keying off the last assistant message
+  // would blank the meter to its placeholder for the whole generation. Walk
+  // backwards instead of copy-and-reversing — this runs on every streamed token.
+  const lastAssistantStat = useMemo(() => {
+    for (let i = chat.messages.length - 1; i >= 0; i--) {
+      const m = chat.messages[i]
+      if (m.role === 'assistant' && m.stat) return m.stat
+    }
+    return undefined
+  }, [chat.messages])
 
   const pullPercent =
     pull.progress?.total && pull.progress.total > 0
