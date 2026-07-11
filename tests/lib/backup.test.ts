@@ -147,7 +147,10 @@ describe('validateBackup', () => {
   })
 
   it('accepts a well-formed empty backup', () => {
-    expect(validateBackup(emptyBackup())).toEqual(emptyBackup())
+    // One instance, compared against itself: emptyBackup() stamps Date.now(),
+    // so building it twice flakes whenever a millisecond ticks between calls.
+    const backup = emptyBackup()
+    expect(validateBackup(backup)).toEqual(backup)
   })
 
   it('accepts a well-formed backup with populated collections', () => {
