@@ -36,6 +36,18 @@ export function useShortcuts({
         return
       }
 
+      // Escape stops generation or closes dialogs, reachable even while typing.
+      if (matchShortcut(e, SHORTCUT_ESCAPE)) {
+        // Any open dialog owns Escape (app-level state OR any rendered dialog,
+        // covering page-local ConfirmDialogs).
+        if (isDialogOpen || document.querySelector('[role="dialog"]')) return
+        if (isStreaming) {
+          e.preventDefault()
+          onStopGenerating()
+        }
+        return
+      }
+
       // Every other shortcut below is suppressed while the user is typing.
       if (isTypingTarget(e.target)) return
 
@@ -43,14 +55,6 @@ export function useShortcuts({
         e.preventDefault()
         onNewChat()
         return
-      }
-
-      if (matchShortcut(e, SHORTCUT_ESCAPE)) {
-        // A dialog owns Escape while it's open — let its own handler run
-        // (or a prior listener that already handled it) instead of also
-        // stopping generation underneath it.
-        if (isDialogOpen || e.defaultPrevented) return
-        if (isStreaming) onStopGenerating()
       }
     }
 
