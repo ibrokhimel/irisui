@@ -1,6 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
+// fetchSystemStats now goes through the `system_stats` Tauri command; it is
+// covered in system-invoke.test.ts, which needs a hoisted vi.mock of
+// @tauri-apps/api/core and so must live in its own file.
 import {
-  fetchSystemStats, formatTimeLeft, loadMonitorOpen, pushSample, saveMonitorOpen, vramFit,
+  formatTimeLeft, loadMonitorOpen, pushSample, saveMonitorOpen, vramFit,
 } from '../../src/lib/system'
 
 afterEach(() => vi.unstubAllGlobals())
@@ -70,24 +73,6 @@ describe('pushSample', () => {
 
   it('respects a custom cap', () => {
     expect(pushSample([1, 2, 3], 4, 3)).toEqual([2, 3, 4])
-  })
-})
-
-describe('fetchSystemStats', () => {
-  it('returns the parsed snapshot on 200', async () => {
-    const snap = {
-      gpu: null, cpu: { utilPct: 28, cores: 16 },
-      ram: { usedBytes: 1, totalBytes: 2 }, disk: null,
-    }
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(
-      new Response(JSON.stringify(snap), { status: 200 }),
-    ))
-    await expect(fetchSystemStats()).resolves.toEqual(snap)
-  })
-
-  it('throws on non-OK responses', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('', { status: 404 })))
-    await expect(fetchSystemStats()).rejects.toThrow('404')
   })
 })
 

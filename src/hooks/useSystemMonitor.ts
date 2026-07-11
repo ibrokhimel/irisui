@@ -17,15 +17,17 @@ export interface SystemMonitorData {
 }
 
 const SYSTEM_POLL_MS = 2_000
-const SYSTEM_RETRY_MS = 30_000 // slow retry once the endpoint has proven absent
+const SYSTEM_RETRY_MS = 30_000 // slow retry once stats have proven unavailable
 const PS_POLL_MS = 5_000
 
 /**
- * Polls /api/system (2 s) and Ollama /api/ps (5 s) while the tab is visible.
- * The panel unmounts when collapsed, so mount = polling on. A failing
- * /api/system flips systemAvailable and backs off to a 30 s retry; a failing
- * /api/ps marks Ollama offline. isStreaming is a poll-now signal so the
- * loaded-models list reacts to generations starting/finishing.
+ * Polls the `system_stats` Tauri command (2 s) and Ollama /api/ps (5 s) while
+ * the tab is visible. The panel unmounts when collapsed, so mount = polling on.
+ * Failing system stats — which is every non-desktop environment, since the
+ * command only exists inside the Tauri shell — flips systemAvailable and backs
+ * off to a 30 s retry; a failing /api/ps marks Ollama offline. isStreaming is a
+ * poll-now signal so the loaded-models list reacts to generations
+ * starting/finishing.
  */
 export function useSystemMonitor({ isStreaming }: { isStreaming: boolean }): SystemMonitorData {
   const [system, setSystem] = useState<SystemSnapshot | null>(null)
@@ -47,7 +49,7 @@ export function useSystemMonitor({ isStreaming }: { isStreaming: boolean }): Sys
     return () => document.removeEventListener('visibilitychange', onVis)
   }, [])
 
-  // /api/system loop
+  // system_stats loop
   useEffect(() => {
     if (!visible) return
     const ctrl = new AbortController()

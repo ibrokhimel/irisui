@@ -1,9 +1,12 @@
 /**
- * Client side of the System Monitor. `/api/system` is served by the Vite
- * middleware in scripts/systemStatsPlugin.ts (dev + preview only) — when the
- * app is hosted without it, fetchSystemStats rejects and the panel degrades
- * to Ollama-derived data.
+ * Client side of the System Monitor. Hardware stats come from the `system_stats`
+ * Tauri command (nvidia-smi + sysinfo, in Rust). The old `/api/system` Vite
+ * middleware is gone: a release build serves static files with no dev server
+ * behind them, so it would have 404'd in the shipped binary while still working
+ * under `tauri dev`. Outside the desktop shell this rejects and the panel
+ * degrades to Ollama-derived data — the same failure path as before.
  */
+import { isTauri } from './http'
 
 export interface GpuStats {
   name: string
@@ -22,10 +25,14 @@ export interface SystemSnapshot {
 
 export const GIB = 2 ** 30
 
-export async function fetchSystemStats(signal?: AbortSignal): Promise<SystemSnapshot> {
-  const res = await fetch('/api/system', { signal })
-  if (!res.ok) throw new Error(`system stats unavailable (${res.status})`)
-  return (await res.json()) as SystemSnapshot
+/**
+ * `_signal` is retained so useSystemMonitor.ts compiles unchanged. Tauri
+ * commands are not abortable; the hook already discards late results.
+ */
+export async function fetchSystemStats(_signal?: AbortSignal): Promise<SystemSnapshot> {
+  if (!isTauri()) throw new Error('system stats need the desktop app')
+  const { invoke } = await import('@tauri-apps/api/core')
+  return invoke<SystemSnapshot>('system_stats')
 }
 
 /** Split loaded models' memory into GPU-resident vs spilled-to-RAM bytes. */
