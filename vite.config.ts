@@ -19,8 +19,13 @@ export default defineConfig({
   define: {
     __APP_VERSION__: JSON.stringify(pkg.version),
   },
+  // Tauri compiles Rust into src-tauri/target and holds the .dll open; letting
+  // Vite's watcher near it throws EBUSY and kills the dev server.
   server: {
     port: 5173,
     strictPort: true,
+    watch: {
+      ignored: ['**/src-tauri/**'],
+    },
   },
 })

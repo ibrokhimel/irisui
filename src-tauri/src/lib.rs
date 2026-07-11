@@ -94,8 +94,9 @@ fn query_disk() -> Option<Disk> {
         })
 }
 
-#[tauri::command]
-async fn system_stats() -> SystemSnapshot {
+/// Blocking: sleeps ~200 ms between CPU samples and shells out to nvidia-smi.
+/// Never call this on the async runtime — see `system_stats`.
+fn collect_snapshot() -> SystemSnapshot {
     let mut sys = System::new();
 
     // CPU usage is a delta: it needs two samples at least
@@ -124,6 +125,16 @@ async fn system_stats() -> SystemSnapshot {
         },
         disk: query_disk(),
     }
+}
+
+/// The frontend polls this every 2 s. Collection blocks (a CPU-delta sleep plus
+/// an nvidia-smi spawn), so it runs on the blocking pool rather than stalling a
+/// runtime worker on every tick.
+#[tauri::command]
+async fn system_stats() -> Result<SystemSnapshot, String> {
+    tauri::async_runtime::spawn_blocking(collect_snapshot)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
