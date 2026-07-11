@@ -2,11 +2,19 @@ import type { MessageStat } from './lib/stats'
 
 export type Role = 'user' | 'assistant'
 
+/** A retrieved source excerpt cited under a RAG-grounded assistant reply. */
+export type ChatSource = {
+  n: number
+  fileName: string
+  snippet: string
+}
+
 export type ChatMessage = {
   id: string
   role: Role
   content: string
   stat?: MessageStat
+  sources?: ChatSource[]
 }
 
 export type OllamaModel = {

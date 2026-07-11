@@ -16,6 +16,9 @@ export interface ConversationMeta {
   model: string
   effort: Effort
   temperature: number
+  /** Attached knowledge base for RAG-grounded replies. Optional so
+   *  conversations persisted before v0.8 load without migration. */
+  kbId?: string
 }
 
 export interface Conversation extends ConversationMeta {
