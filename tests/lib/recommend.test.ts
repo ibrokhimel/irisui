@@ -35,3 +35,14 @@ describe('recommendModels', () => {
     }
   })
 })
+
+describe('isLikelyEmbeddingModel', () => {
+  it('flags embedding models and spares chat models', async () => {
+    const { isLikelyEmbeddingModel } = await import('../../src/lib/modelCatalog')
+    expect(isLikelyEmbeddingModel('all-minilm:latest')).toBe(true)
+    expect(isLikelyEmbeddingModel('nomic-embed-text')).toBe(true)
+    expect(isLikelyEmbeddingModel('mxbai-embed-large:latest')).toBe(true)
+    expect(isLikelyEmbeddingModel('qwen2.5:0.5b')).toBe(false)
+    expect(isLikelyEmbeddingModel('sera:latest')).toBe(false)
+  })
+})

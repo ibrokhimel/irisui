@@ -187,6 +187,41 @@ export async function benchmarkModel(opts: {
   }
 }
 
+// ── Embeddings ────────────────────────────────────────────────────────────
+
+/**
+ * POST /api/embed — batch-embed `texts` with `model`. Validates the response
+ * shape defensively: a missing/mis-sized/ragged/non-numeric `embeddings`
+ * array throws rather than silently returning garbage vectors.
+ */
+export async function embedTexts(model: string, texts: string[]): Promise<number[][]> {
+  const res = await fetch(`${OLLAMA_BASE}/api/embed`, {
+    method: 'POST',
+    headers: JSON_HEADERS,
+    body: JSON.stringify({ model, input: texts }),
+  })
+  if (!res.ok) throw new Error(await readError(res))
+
+  const data: unknown = await res.json()
+  const embeddings = (data as { embeddings?: unknown } | null)?.embeddings
+
+  if (!Array.isArray(embeddings) || embeddings.length !== texts.length) {
+    throw new Error('Embedding failed: unexpected response')
+  }
+
+  const dim = embeddings.length > 0 ? (embeddings[0] as unknown[])?.length : undefined
+  const valid = embeddings.every(
+    (vec): vec is number[] =>
+      Array.isArray(vec) &&
+      vec.length > 0 &&
+      vec.length === dim &&
+      vec.every((n) => Number.isFinite(n)),
+  )
+  if (!valid) throw new Error('Embedding failed: unexpected response')
+
+  return embeddings as number[][]
+}
+
 // ── shared NDJSON reader ─────────────────────────────────────────────────
 
 /**

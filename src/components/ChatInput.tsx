@@ -1,9 +1,15 @@
-import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
+import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
 import { AnimatePresence, m } from 'motion/react'
-import { ArrowUp, ChevronDown, SlidersHorizontal, Square } from 'lucide-react'
+import { AlertTriangle, ArrowUp, BookOpen, ChevronDown, SlidersHorizontal, Square, X } from 'lucide-react'
 import { SPRING, TAP } from '../lib/motion'
 import type { Effort, OllamaModel, OllamaStatus } from '../types'
 import { EFFORT_OPTIONS, TEMP_MAX, TEMP_MIN, TEMP_STEP } from '../constants'
+import { DEFAULT_EMBED_MODEL } from '../lib/rag'
+
+export interface KbOption {
+  id: string
+  name: string
+}
 
 const STATUS_DOT: Record<OllamaStatus, string> = {
   checking: 'bg-muted',
@@ -28,6 +34,11 @@ export function ChatInput({
   models,
   selectedModel,
   onSelectModel,
+  kbs,
+  selectedKbId,
+  onSelectKb,
+  ragNotice,
+  onDismissRagNotice,
 }: {
   variant: 'hero' | 'docked'
   input: string
@@ -44,9 +55,16 @@ export function ChatInput({
   models: OllamaModel[]
   selectedModel: string
   onSelectModel: (name: string) => void
+  kbs: KbOption[]
+  selectedKbId?: string
+  onSelectKb: (id: string | undefined) => void
+  ragNotice: boolean
+  onDismissRagNotice: () => void
 }) {
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const [controlsOpen, setControlsOpen] = useState(false)
+  const [kbOpen, setKbOpen] = useState(false)
+  const selectedKb = kbs.find((k) => k.id === selectedKbId)
 
   useEffect(() => {
     const el = textareaRef.current
@@ -56,13 +74,16 @@ export function ChatInput({
   }, [input])
 
   useEffect(() => {
-    if (!controlsOpen) return
+    if (!controlsOpen && !kbOpen) return
     const onKey = (e: globalThis.KeyboardEvent) => {
-      if (e.key === 'Escape') setControlsOpen(false)
+      if (e.key === 'Escape') {
+        setControlsOpen(false)
+        setKbOpen(false)
+      }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [controlsOpen])
+  }, [controlsOpen, kbOpen])
 
   const sendDisabled = input.trim().length === 0 || !canSend
 
@@ -89,6 +110,30 @@ export function ChatInput({
   return (
     <div className={shell}>
       <div className={inner}>
+        <AnimatePresence>
+          {ragNotice && (
+            <m.div
+              initial={{ opacity: 0, y: 6 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 4 }}
+              transition={{ duration: 0.15, ease: 'easeOut' }}
+              className="mb-2 flex items-center gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-200/90"
+            >
+              <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-amber-400" />
+              <span className="flex-1">
+                Knowledge attached but embedding model missing — install {DEFAULT_EMBED_MODEL} in Knowledge.
+              </span>
+              <button
+                onClick={onDismissRagNotice}
+                aria-label="Dismiss notice"
+                className="shrink-0 rounded p-0.5 text-amber-200/70 transition hover:text-amber-100"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </m.div>
+          )}
+        </AnimatePresence>
+
         <div className="rounded-3xl border border-line bg-panel2 shadow-[0_4px_24px_-12px_rgba(0,0,0,0.5)] transition focus-within:border-iris/50">
           <textarea
             ref={textareaRef}
@@ -177,6 +222,80 @@ export function ChatInput({
               </AnimatePresence>
             </div>
 
+            {/* Knowledge base picker */}
+            <div className="relative">
+              <button
+                onClick={() => setKbOpen((o) => !o)}
+                disabled={isStreaming}
+                aria-label="Attach a knowledge base"
+                aria-expanded={kbOpen}
+                title={selectedKb ? `Knowledge: ${selectedKb.name}` : 'Attach a knowledge base'}
+                className={
+                  'flex h-8 items-center gap-1.5 rounded-lg px-2 text-muted transition hover:bg-panel hover:text-fg disabled:cursor-not-allowed disabled:opacity-50 ' +
+                  (selectedKb
+                    ? 'bg-iris/10 text-iris hover:text-iris'
+                    : kbOpen
+                      ? 'bg-panel text-fg'
+                      : '')
+                }
+              >
+                <BookOpen className="h-[18px] w-[18px]" />
+                {selectedKb && (
+                  <span className="max-w-[110px] truncate text-xs font-medium">{selectedKb.name}</span>
+                )}
+              </button>
+
+              {kbOpen && (
+                <button
+                  className="fixed inset-0 z-10 cursor-default"
+                  aria-hidden="true"
+                  tabIndex={-1}
+                  onClick={() => setKbOpen(false)}
+                />
+              )}
+              <AnimatePresence>
+                {kbOpen && (
+                  <m.div
+                    initial={{ opacity: 0, scale: 0.95, y: 6 }}
+                    animate={{ opacity: 1, scale: 1, y: 0 }}
+                    exit={{ opacity: 0, scale: 0.97, y: 4 }}
+                    transition={{ duration: 0.14, ease: 'easeOut' }}
+                    className="absolute bottom-full left-0 z-20 mb-2 max-h-64 w-60 origin-bottom-left overflow-y-auto rounded-xl border border-line bg-panel p-1.5 shadow-xl"
+                  >
+                    <p className="px-2 pb-1 pt-0.5 text-[11px] font-semibold uppercase tracking-wider text-muted">
+                      Knowledge base
+                    </p>
+                    <KbItem
+                      active={!selectedKbId}
+                      onClick={() => {
+                        onSelectKb(undefined)
+                        setKbOpen(false)
+                      }}
+                    >
+                      None
+                    </KbItem>
+                    {kbs.map((kb) => (
+                      <KbItem
+                        key={kb.id}
+                        active={kb.id === selectedKbId}
+                        onClick={() => {
+                          onSelectKb(kb.id)
+                          setKbOpen(false)
+                        }}
+                      >
+                        {kb.name}
+                      </KbItem>
+                    ))}
+                    {kbs.length === 0 && (
+                      <p className="px-2 py-2 text-xs text-muted">
+                        No knowledge bases yet. Create one in Knowledge.
+                      </p>
+                    )}
+                  </m.div>
+                )}
+              </AnimatePresence>
+            </div>
+
             {/* Right cluster: model picker + send */}
             <div className="ml-auto flex items-center gap-1.5">
               <div className="flex items-center gap-1.5 rounded-lg px-2 py-1.5 transition hover:bg-panel">
@@ -239,5 +358,27 @@ export function ChatInput({
         )}
       </div>
     </div>
+  )
+}
+
+function KbItem({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean
+  onClick: () => void
+  children: ReactNode
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={
+        'flex w-full items-center gap-2 truncate rounded-lg px-2 py-1.5 text-left text-sm transition ' +
+        (active ? 'bg-iris/10 text-iris' : 'text-muted hover:bg-panel2 hover:text-fg')
+      }
+    >
+      <span className="truncate">{children}</span>
+    </button>
   )
 }

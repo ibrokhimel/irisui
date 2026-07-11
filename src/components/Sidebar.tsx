@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { AnimatePresence, m } from 'motion/react'
 import {
   Activity,
+  BookOpen,
   Boxes,
   Download,
   Loader2,
@@ -38,6 +39,7 @@ export function Sidebar({
   onSearch,
   onNewChat,
   onOpenModels,
+  onOpenKnowledge,
   onOpenStats,
   pullActive,
   pullPercent,
@@ -48,13 +50,14 @@ export function Sidebar({
   onOpenSettings,
 }: {
   open: boolean
-  view: 'chat' | 'models' | 'stats'
+  view: 'chat' | 'models' | 'knowledge' | 'stats'
   metas: ConversationMeta[]
   currentId: string
   search: string
   onSearch: (query: string) => void
   onNewChat: () => void
   onOpenModels: () => void
+  onOpenKnowledge: () => void
   onOpenStats: () => void
   pullActive: boolean
   pullPercent: number | null
@@ -148,6 +151,18 @@ export function Sidebar({
                 {pullPercent !== null ? `${pullPercent}%` : ''}
               </span>
             )}
+          </button>
+          <button
+            onClick={onOpenKnowledge}
+            className={
+              'mt-1 flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm transition ' +
+              (view === 'knowledge'
+                ? 'bg-panel2 text-fg'
+                : 'text-muted hover:bg-panel2/60 hover:text-fg')
+            }
+          >
+            <BookOpen className="h-4 w-4" />
+            Knowledge
           </button>
           <button
             onClick={onOpenStats}

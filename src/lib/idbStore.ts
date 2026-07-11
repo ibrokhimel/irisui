@@ -8,10 +8,12 @@ import type { ChatStore, Conversation, ConversationMeta } from './store'
  */
 
 const DB_NAME = 'irisui'
-const DB_VERSION = 2
+const DB_VERSION = 3
 const META = 'conversations'
 const MSGS = 'messages'
 export const STATS = 'stats'
+export const KBS = 'kbs'
+export const CHUNKS = 'chunks'
 
 interface MsgRecord {
   id: string
@@ -26,6 +28,12 @@ export function openDB(): Promise<IDBDatabase> {
       if (!db.objectStoreNames.contains(META)) db.createObjectStore(META, { keyPath: 'id' })
       if (!db.objectStoreNames.contains(MSGS)) db.createObjectStore(MSGS, { keyPath: 'id' })
       if (!db.objectStoreNames.contains(STATS)) db.createObjectStore(STATS, { keyPath: 'id' })
+      if (!db.objectStoreNames.contains(KBS)) db.createObjectStore(KBS, { keyPath: 'id' })
+
+      const chunksStore = db.objectStoreNames.contains(CHUNKS)
+        ? req.transaction!.objectStore(CHUNKS)
+        : db.createObjectStore(CHUNKS, { keyPath: 'id' })
+      if (!chunksStore.indexNames.contains('kbId')) chunksStore.createIndex('kbId', 'kbId')
     }
     req.onsuccess = () => resolve(req.result)
     req.onerror = () => reject(req.error)
