@@ -1,8 +1,14 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import type { SpeechResultListLike } from '../lib/speech'
 import { shouldFallbackToLocal, speechErrorKind, speechErrorMessage, transcriptFrom } from '../lib/speech'
 import { loadAppSettings, saveAppSettings, type VoiceEngine } from '../lib/appSettings'
-import { isWhisperSupported, loadWhisper, transcribe as transcribeWithWhisper } from '../lib/whisper'
+import {
+  getWhisperLoad,
+  isWhisperSupported,
+  loadWhisper,
+  subscribeWhisperLoad,
+  transcribe as transcribeWithWhisper,
+} from '../lib/whisper'
 import { startRecording, type Recorder } from '../lib/recorder'
 
 // `Message.tsx` imports these three re-exports and must keep compiling
@@ -68,10 +74,17 @@ export function useSpeechInput(onTranscript: (text: string, isFinal: boolean) =>
     loadAppSettings().voiceEngine === 'local' ? 'local' : 'web',
   )
   const [status, setStatus] = useState<VoiceInputStatus>('idle')
-  const [downloadPct, setDownloadPct] = useState(0)
+  // Download progress is read from the module-level store in lib/whisper, not
+  // held here: this hook lives in ChatInput, which unmounts whenever the user
+  // switches view, and the progress of a several-hundred-MB download must not
+  // die with it. Remounting now re-attaches to the live number.
+  const whisperLoad = useSyncExternalStore(subscribeWhisperLoad, getWhisperLoad)
+  const downloadPct = whisperLoad.pct
 
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null)
   const recorderRef = useRef<Recorder | null>(null)
+  /** False once unmounted, so a download that finishes later can't grab the mic. */
+  const mountedRef = useRef(true)
   // Which mode ('auto'/'web'/'local') the CURRENT session was launched under —
   // read once at start so a mid-session settings change can't affect whether
   // this session's error handler is allowed to sticky-switch engines.
@@ -89,13 +102,24 @@ export function useSpeechInput(onTranscript: (text: string, isFinal: boolean) =>
       }
       setEngine('local')
       setStatus('downloading')
-      setDownloadPct(0)
-      await loadWhisper(modelId ?? loadAppSettings().asrModel, (pct) => setDownloadPct(pct))
+      await loadWhisper(modelId ?? loadAppSettings().asrModel)
+
+      // The download can take minutes on a cold cache. If the user navigated
+      // away in the meantime this component is gone, its cleanup has already
+      // run, and nothing would ever release a mic we opened now — so don't.
+      // The model stays downloaded; the next mic click starts instantly.
+      if (!mountedRef.current) return
+
       const recorder = await startRecording()
+      if (!mountedRef.current) {
+        recorder.cancel()
+        return
+      }
       recorderRef.current = recorder
       setStatus('listening')
       setListening(true)
     } catch (err) {
+      if (!mountedRef.current) return
       setError(err instanceof Error ? err.message : 'On-device transcription failed to start.')
       setStatus('idle')
       setListening(false)
@@ -212,14 +236,17 @@ export function useSpeechInput(onTranscript: (text: string, isFinal: boolean) =>
   const clearError = useCallback(() => setError(''), [])
 
   // Release the mic / abort a still-running session if the component
-  // unmounts (e.g. the composer swaps between the hero/docked variant).
-  useEffect(
-    () => () => {
+  // unmounts (e.g. the composer swaps between the hero/docked variant, or the
+  // user switches view). mountedRef also stops an in-flight model download from
+  // opening the mic after we're gone — see startLocal.
+  useEffect(() => {
+    mountedRef.current = true
+    return () => {
+      mountedRef.current = false
       recognitionRef.current?.abort()
       recorderRef.current?.cancel()
-    },
-    [],
-  )
+    }
+  }, [])
 
   return { supported, listening, error, clearError, toggle, engine, status, downloadPct }
 }

@@ -23,6 +23,7 @@ import { ChatInput } from './components/ChatInput'
 import { ContextMeter } from './components/ContextMeter'
 import { SettingsModal, type Tab as SettingsTab } from './components/SettingsModal'
 import { MigrationNotice } from './components/MigrationNotice'
+import { WhisperDownload } from './components/WhisperDownload'
 import { CommandPalette, type PaletteCommand } from './components/CommandPalette'
 import { SystemMonitor } from './components/SystemMonitor'
 import { useChat } from './hooks/useChat'
@@ -378,6 +379,10 @@ export default function App() {
         }}
         onDismiss={closeMigrationNotice}
       />
+
+      {/* At the app root, not in the composer: the download must stay visible
+          when the user switches away from the chat view. */}
+      <WhisperDownload />
 
       <CommandPalette open={paletteOpen} commands={paletteCommands} onClose={() => setPaletteOpen(false)} />
     </div>
