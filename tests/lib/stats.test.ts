@@ -30,11 +30,25 @@ describe('summarizeByModel', () => {
     expect(sums[0].avgTokensPerSec).toBeCloseTo(15)
     expect(sums[1].lastUsed).toBe(3)
   })
+
+  it('sums and averages prompt/completion tokens per model', () => {
+    const mk = (model: string, completionTokens: number) =>
+      computeStat({ conversationId: 'c', model, startedAt: 1, ttftMs: 100, totalMs: 1000, meta: { ...meta, promptTokens: 20, completionTokens } })
+    const sums = summarizeByModel([mk('a', 10), mk('a', 30)])
+    expect(sums[0].totalPromptTokens).toBe(40)
+    expect(sums[0].totalCompletionTokens).toBe(40)
+    expect(sums[0].avgPromptTokens).toBeCloseTo(20)
+  })
 })
 
 describe('formatStatLine', () => {
   it('renders the compact line', () => {
     const s = computeStat({ conversationId: 'c', model: 'sera:latest', startedAt: 1, ttftMs: 620, totalMs: 8200, meta: { ...meta, completionTokens: 67, evalDurationNs: 2_991_071_428 } })
-    expect(formatStatLine(toMessageStat(s))).toBe('sera:latest · 22.4 tok/s · first token 620ms · total 8.2s')
+    expect(formatStatLine(toMessageStat(s))).toBe('sera:latest · 22.4 tok/s · first token 620ms · total 8.2s · ↑20 in · ↓67 out')
+  })
+
+  it('omits the in/out segment when promptTokens is absent (pre-upgrade persisted messages)', () => {
+    const stat = { model: 'm', tokensPerSec: 10, ttftMs: 100, totalMs: 1000, completionTokens: 50 }
+    expect(formatStatLine(stat)).toBe('m · 10.0 tok/s · first token 100ms · total 1.0s')
   })
 })

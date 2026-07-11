@@ -7,6 +7,7 @@ import {
 import type { GenerationStat } from '../lib/stats'
 import { summarizeByModel } from '../lib/stats'
 import { clearStats, listStats } from '../lib/statsStore'
+import { formatTokens } from '../lib/context'
 import { fadeUp, stagger } from '../lib/motion'
 import { useCountUp } from '../hooks/useCountUp'
 import { ConfirmDialog } from './ConfirmDialog'
@@ -34,6 +35,9 @@ export function StatsPage() {
 
   const summaries = summarizeByModel(stats)
   const fastest = [...summaries].sort((a, b) => b.avgTokensPerSec - a.avgTokensPerSec)[0]
+  const totalPromptTokens = summaries.reduce((a, s) => a + s.totalPromptTokens, 0)
+  const totalCompletionTokens = summaries.reduce((a, s) => a + s.totalCompletionTokens, 0)
+  const avgPromptTokens = stats.length ? totalPromptTokens / stats.length : 0
   const timeline = [...stats].reverse().map((s, i) => ({
     n: i + 1,
     tps: Number(s.tokensPerSec.toFixed(1)),
@@ -69,6 +73,9 @@ export function StatsPage() {
               <Card index={0} label="Generations" value={<CountUpValue target={stats.length} />} />
               <Card index={1} label="Most used" value={summaries[0]?.model ?? '—'} />
               <Card index={2} label="Fastest" value={fastest ? `${fastest.model} · ${fastest.avgTokensPerSec.toFixed(1)} tok/s` : '—'} />
+              <Card index={3} label="Total input tokens" value={formatTokens(totalPromptTokens)} />
+              <Card index={4} label="Total output tokens" value={formatTokens(totalCompletionTokens)} />
+              <Card index={5} label="Avg prompt size" value={`${formatTokens(avgPromptTokens)} tok`} />
             </div>
 
             <ChartPanel index={0} title="Tokens/sec over time">
@@ -128,7 +135,7 @@ export function StatsPage() {
                       <th className="px-3 py-2 font-medium">tok/s</th>
                       <th className="px-3 py-2 font-medium">First token</th>
                       <th className="px-3 py-2 font-medium">Total</th>
-                      <th className="px-3 py-2 font-medium">Tokens</th>
+                      <th className="px-3 py-2 font-medium">Tokens (in/out)</th>
                       <th className="px-3 py-2 font-medium">When</th>
                     </tr>
                   </thead>
@@ -139,7 +146,7 @@ export function StatsPage() {
                         <td className="px-3 py-2">{s.tokensPerSec.toFixed(1)}</td>
                         <td className="px-3 py-2">{s.ttftMs}ms</td>
                         <td className="px-3 py-2">{(s.totalMs / 1000).toFixed(1)}s</td>
-                        <td className="px-3 py-2">{s.completionTokens}</td>
+                        <td className="px-3 py-2">↑{formatTokens(s.promptTokens)} ↓{formatTokens(s.completionTokens)}</td>
                         <td className="px-3 py-2 text-muted">{new Date(s.startedAt).toLocaleTimeString()}</td>
                       </tr>
                     ))}

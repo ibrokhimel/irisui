@@ -1,6 +1,7 @@
 import { ArrowRight, Boxes } from 'lucide-react'
 import type { AppSettings } from '../lib/appSettings'
-import { EFFORT_OPTIONS, TEMP_MAX, TEMP_MIN, TEMP_STEP } from '../constants'
+import { EFFORT_OPTIONS, NUM_CTX_OPTIONS, TEMP_MAX, TEMP_MIN, TEMP_STEP } from '../constants'
+import { formatTokens } from '../lib/context'
 
 export function SettingsChatDefaults({
   settings,
@@ -58,6 +59,39 @@ export function SettingsChatDefaults({
           aria-label="Default temperature"
           className="h-1 w-full cursor-pointer accent-[var(--color-iris)]"
         />
+      </section>
+
+      <section>
+        <div className="mb-1.5 flex items-center justify-between">
+          <h3 className="text-xs font-semibold uppercase tracking-wider text-muted">
+            Default context window
+          </h3>
+          <span className="font-mono text-xs text-fg">{formatTokens(settings.defaultNumCtx)}</span>
+        </div>
+        <div className="grid grid-cols-4 gap-1.5">
+          {NUM_CTX_OPTIONS.map((n) => {
+            const active = settings.defaultNumCtx === n
+            return (
+              <button
+                key={n}
+                onClick={() => onUpdate({ defaultNumCtx: n })}
+                className={
+                  'rounded-lg border px-2 py-2 text-center text-xs font-medium transition ' +
+                  (active
+                    ? 'border-iris bg-iris/10 text-fg'
+                    : 'border-line text-muted hover:border-iris/40 hover:text-fg')
+                }
+              >
+                {formatTokens(n)}
+              </button>
+            )
+          })}
+        </div>
+        <p className="mt-2 text-xs text-muted">
+          Ollama's own default is 4,096 tokens, so most models silently run far below what they
+          were trained for. Raising the window lets a chat carry more history before it's
+          forgotten, but it costs more VRAM — the KV cache grows with it.
+        </p>
       </section>
 
       <section>
