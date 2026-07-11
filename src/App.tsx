@@ -1,9 +1,10 @@
-import { lazy, Suspense, useMemo, useState } from 'react'
+import { lazy, Suspense, useEffect, useMemo, useState } from 'react'
 import { AnimatePresence, LazyMotion, MotionConfig, m } from 'motion/react'
 import {
   Activity,
   BookOpen,
   Boxes,
+  Gauge,
   Loader2,
   MessageSquare,
   PanelLeft,
@@ -22,6 +23,7 @@ import { ChatInput } from './components/ChatInput'
 import { ContextMeter } from './components/ContextMeter'
 import { SettingsModal } from './components/SettingsModal'
 import { CommandPalette, type PaletteCommand } from './components/CommandPalette'
+import { SystemMonitor } from './components/SystemMonitor'
 import { useChat } from './hooks/useChat'
 import { useTheme } from './hooks/useTheme'
 import { useAppSettings } from './hooks/useAppSettings'
@@ -32,6 +34,7 @@ import { useStudio } from './hooks/useStudio'
 import { useShortcuts } from './hooks/useShortcuts'
 import type { Persona } from './lib/studioStore'
 import { DEFAULT_NUM_CTX } from './constants'
+import { loadMonitorOpen, saveMonitorOpen } from './lib/system'
 
 // Heavy/secondary views, split into their own chunks. StatsPage in particular
 // pulls in recharts, which is by far the largest dependency in the app.
@@ -72,6 +75,10 @@ export default function App() {
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(true)
+  const [monitorOpen, setMonitorOpen] = useState<boolean>(() => loadMonitorOpen())
+  useEffect(() => {
+    saveMonitorOpen(monitorOpen)
+  }, [monitorOpen])
   const [view, setView] = useState<'chat' | 'models' | 'knowledge' | 'studio' | 'arena' | 'stats'>(
     'chat',
   )
@@ -138,6 +145,12 @@ export default function App() {
       label: 'Toggle sidebar',
       icon: PanelLeft,
       run: () => setSidebarOpen((o) => !o),
+    },
+    {
+      id: 'toggle-monitor',
+      label: 'Toggle system monitor',
+      icon: Gauge,
+      run: () => setMonitorOpen((o) => !o),
     },
     ...(chat.isStreaming
       ? [{ id: 'stop-generating', label: 'Stop generating', icon: Square, run: chat.stop }]
@@ -208,6 +221,7 @@ export default function App() {
       <main className="flex min-w-0 flex-1 flex-col">
         <TopBar
           onToggleSidebar={() => setSidebarOpen((o) => !o)}
+          onToggleMonitor={() => setMonitorOpen((o) => !o)}
           onOpenSettings={() => setSettingsOpen(true)}
           title={
             view === 'models'
@@ -311,6 +325,14 @@ export default function App() {
           </m.div>
         </AnimatePresence>
       </main>
+
+      {monitorOpen && (
+        <SystemMonitor
+          selectedModel={chat.selectedModel}
+          isStreaming={chat.isStreaming}
+          onCollapse={() => setMonitorOpen(false)}
+        />
+      )}
 
       <SettingsModal
         open={settingsOpen}

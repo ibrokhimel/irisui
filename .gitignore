@@ -9,3 +9,12 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 .superpowers/
+
+# Local agent-tooling artifacts (ruflo / claude-flow)
+.swarm/
+agentdb.rvf
+agentdb.rvf.lock
+ruvector.db
+
+# Tauri build output
+src-tauri/target/

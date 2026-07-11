@@ -1,12 +1,14 @@
-import { Menu, Settings } from 'lucide-react'
+import { Gauge, Menu, Settings } from 'lucide-react'
 
 export function TopBar({
   onToggleSidebar,
+  onToggleMonitor,
   onOpenSettings,
   title,
   showTitle,
 }: {
   onToggleSidebar: () => void
+  onToggleMonitor: () => void
   onOpenSettings: () => void
   title: string
   showTitle: boolean
@@ -27,13 +29,22 @@ export function TopBar({
         </div>
       )}
 
-      <button
-        onClick={onOpenSettings}
-        aria-label="Settings"
-        className="rounded-lg p-2 text-muted transition hover:bg-panel hover:text-fg"
-      >
-        <Settings className="h-5 w-5" />
-      </button>
+      <div className="flex items-center">
+        <button
+          onClick={onToggleMonitor}
+          aria-label="Toggle system monitor"
+          className="hidden rounded-lg p-2 text-muted transition hover:bg-panel hover:text-fg lg:block"
+        >
+          <Gauge className="h-5 w-5" />
+        </button>
+        <button
+          onClick={onOpenSettings}
+          aria-label="Settings"
+          className="rounded-lg p-2 text-muted transition hover:bg-panel hover:text-fg"
+        >
+          <Settings className="h-5 w-5" />
+        </button>
+      </div>
     </header>
   )
 }
