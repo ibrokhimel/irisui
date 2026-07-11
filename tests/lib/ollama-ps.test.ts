@@ -37,6 +37,15 @@ describe('listRunningModels', () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(json({}, 500)))
     await expect(listRunningModels()).rejects.toThrow('500')
   })
+
+  it('drops null/non-object entries in models but keeps valid ones', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(json({
+      models: [null, 'not-an-object', { name: 'ok', size: 1, size_vram: 1 }],
+    })))
+    expect(await listRunningModels()).toEqual([
+      { name: 'ok', size: 1, size_vram: 1, expires_at: undefined },
+    ])
+  })
 })
 
 describe('getOllamaVersion', () => {
@@ -53,5 +62,10 @@ describe('getOllamaVersion', () => {
   it('throws on non-OK response', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(json({}, 503)))
     await expect(getOllamaVersion()).rejects.toThrow('503')
+  })
+
+  it('returns empty string when the body is null', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(json(null)))
+    expect(await getOllamaVersion()).toBe('')
   })
 })

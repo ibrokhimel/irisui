@@ -43,7 +43,8 @@ export async function listRunningModels(signal?: AbortSignal): Promise<RunningMo
   const data: unknown = await res.json()
   const models = (data as { models?: unknown })?.models
   if (!Array.isArray(models)) return []
-  return (models as Record<string, unknown>[])
+  return models
+    .filter((m): m is Record<string, unknown> => typeof m === 'object' && m !== null)
     .map((m) => ({
       name: typeof m.name === 'string' ? m.name : '',
       size: typeof m.size === 'number' ? m.size : 0,
@@ -57,8 +58,8 @@ export async function listRunningModels(signal?: AbortSignal): Promise<RunningMo
 export async function getOllamaVersion(signal?: AbortSignal): Promise<string> {
   const res = await fetch(`${getOllamaBase()}/api/version`, { signal })
   if (!res.ok) throw new Error(`Ollama responded with ${res.status}`)
-  const data = (await res.json()) as { version?: unknown }
-  return typeof data.version === 'string' ? data.version : ''
+  const data = (await res.json()) as { version?: unknown } | null
+  return typeof data?.version === 'string' ? data.version : ''
 }
 
 export interface ChatStreamResult {
