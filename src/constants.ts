@@ -44,7 +44,21 @@ export const DEFAULT_TEMPERATURE = 0.7
  * worse than the status quo by a guess.
  */
 export const DEFAULT_NUM_CTX = 4096
-export const NUM_CTX_FLOOR = 2048
+
+/**
+ * Auto-sizing never goes below Ollama's own default, even when the RAM budget
+ * says it should. A browser cannot read system RAM — navigator.deviceMemory is
+ * capped at 8 GB by spec — so when the user hasn't set their RAM we assume 8 GB,
+ * and a big model's weights alone can then exhaust the budget. Letting that
+ * arithmetic win would hand an unconfigured user a SMALLER window than they have
+ * today, which is a regression dressed up as a feature. The floor makes auto
+ * strictly non-worse than the status quo; setting your real RAM is what unlocks
+ * the upside.
+ */
+export const NUM_CTX_FLOOR = DEFAULT_NUM_CTX
+
+/** Manual pinning can still go below the auto floor — 2048 is a legitimate
+ *  choice on a memory-starved machine, it just isn't one we'll make for you. */
 export const NUM_CTX_LADDER = [2048, 4096, 8192, 16384, 32768, 65536, 131072, 262144]
 export const NUM_CTX_MIN = 512
 

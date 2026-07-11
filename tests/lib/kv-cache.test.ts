@@ -125,7 +125,29 @@ describe('autoContextLength', () => {
     const { numCtx, reason } = autoContextLength({ ...sera, ramGb: 8 })
     // 8 GB * 0.6 = 4.8 GB < 8.28 GB of weights — nothing left for a KV cache.
     expect(reason).toBe('floor')
-    expect(numCtx).toBe(2048)
+    expect(numCtx).toBe(4096)
+  })
+
+  /**
+   * The regression this floor exists to prevent. A browser can't read system RAM
+   * (navigator.deviceMemory is capped at 8 GB by spec), so an unconfigured user
+   * is assumed to have 8 GB. On a big model the weights alone blow that budget,
+   * and the raw arithmetic would hand back 2048 — HALF of what Ollama gives them
+   * today. Auto must never be worse than doing nothing.
+   */
+  it('never returns a smaller window than Ollama’s own default', () => {
+    for (const ramGb of [1, 4, 8, 16, 32, 64, 128]) {
+      expect(autoContextLength({ ...sera, ramGb }).numCtx).toBeGreaterThanOrEqual(4096)
+    }
+    // Even for an absurdly expensive model on a tiny machine.
+    expect(
+      autoContextLength({
+        trainedMax: 262144,
+        bytesPerToken: 1e9,
+        modelBytes: 100e9,
+        ramGb: 1,
+      }).numCtx,
+    ).toBe(4096)
   })
 
   it('never exceeds the trained max, even at the floor', () => {
