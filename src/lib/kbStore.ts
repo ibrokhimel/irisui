@@ -1,0 +1,113 @@
+import type { Chunk } from './rag'
+import { CHUNKS, KBS, openDB } from './idbStore'
+
+/**
+ * IndexedDB persistence for knowledge bases and their embedded chunks.
+ * Mirrors statsStore.ts's transaction idiom (oncomplete/onerror/onabort);
+ * callers are responsible for handling rejected promises.
+ */
+
+export interface KnowledgeBase {
+  id: string
+  name: string
+  createdAt: number
+  fileCount: number
+  chunkCount: number
+  embedModel: string
+}
+
+export interface StoredChunk extends Chunk {
+  vector: number[]
+}
+
+let dbp: Promise<IDBDatabase> | null = null
+const getDB = () => (dbp ??= openDB())
+
+export async function listKbs(): Promise<KnowledgeBase[]> {
+  const db = await getDB()
+  const all = await new Promise<KnowledgeBase[]>((resolve, reject) => {
+    const req = db.transaction(KBS, 'readonly').objectStore(KBS).getAll()
+    req.onsuccess = () => resolve(req.result as KnowledgeBase[])
+    req.onerror = () => reject(req.error)
+  })
+  return all.sort((a, b) => b.createdAt - a.createdAt)
+}
+
+export async function createKb(name: string, embedModel: string): Promise<KnowledgeBase> {
+  const db = await getDB()
+  const kb: KnowledgeBase = {
+    id: crypto.randomUUID(),
+    name,
+    createdAt: Date.now(),
+    fileCount: 0,
+    chunkCount: 0,
+    embedModel,
+  }
+  await new Promise<void>((resolve, reject) => {
+    const t = db.transaction(KBS, 'readwrite')
+    t.objectStore(KBS).put(kb)
+    t.oncomplete = () => resolve()
+    t.onerror = () => reject(t.error)
+    t.onabort = () => reject(t.error)
+  })
+  return kb
+}
+
+export async function deleteKb(id: string): Promise<void> {
+  const db = await getDB()
+  await new Promise<void>((resolve, reject) => {
+    const t = db.transaction([KBS, CHUNKS], 'readwrite')
+    t.objectStore(KBS).delete(id)
+
+    const cursorReq = t.objectStore(CHUNKS).index('kbId').openCursor(IDBKeyRange.only(id))
+    cursorReq.onsuccess = () => {
+      const cursor = cursorReq.result
+      if (cursor) {
+        cursor.delete()
+        cursor.continue()
+      }
+    }
+
+    t.oncomplete = () => resolve()
+    t.onerror = () => reject(t.error)
+    t.onabort = () => reject(t.error)
+  })
+}
+
+/** Bulk-store `chunks` for `fileName` and bump the kb's fileCount/chunkCount. */
+export async function addChunks(
+  kbId: string,
+  fileName: string,
+  chunks: StoredChunk[],
+): Promise<void> {
+  const db = await getDB()
+  await new Promise<void>((resolve, reject) => {
+    const t = db.transaction([KBS, CHUNKS], 'readwrite')
+    const chunkStore = t.objectStore(CHUNKS)
+    for (const c of chunks) chunkStore.put({ ...c, fileName })
+
+    const kbStore = t.objectStore(KBS)
+    const getReq = kbStore.get(kbId)
+    getReq.onsuccess = () => {
+      const kb = getReq.result as KnowledgeBase | undefined
+      if (kb) {
+        kb.fileCount += 1
+        kb.chunkCount += chunks.length
+        kbStore.put(kb)
+      }
+    }
+
+    t.oncomplete = () => resolve()
+    t.onerror = () => reject(t.error)
+    t.onabort = () => reject(t.error)
+  })
+}
+
+export async function getChunks(kbId: string): Promise<StoredChunk[]> {
+  const db = await getDB()
+  return new Promise<StoredChunk[]>((resolve, reject) => {
+    const req = db.transaction(CHUNKS, 'readonly').objectStore(CHUNKS).index('kbId').getAll(kbId)
+    req.onsuccess = () => resolve(req.result as StoredChunk[])
+    req.onerror = () => reject(req.error)
+  })
+}
