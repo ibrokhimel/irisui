@@ -11,6 +11,8 @@ import {
   Plus,
   Search,
   Settings,
+  Sparkles,
+  Swords,
   Trash2,
   X,
 } from 'lucide-react'
@@ -40,6 +42,8 @@ export function Sidebar({
   onNewChat,
   onOpenModels,
   onOpenKnowledge,
+  onOpenStudio,
+  onOpenArena,
   onOpenStats,
   pullActive,
   pullPercent,
@@ -50,7 +54,7 @@ export function Sidebar({
   onOpenSettings,
 }: {
   open: boolean
-  view: 'chat' | 'models' | 'knowledge' | 'stats'
+  view: 'chat' | 'models' | 'knowledge' | 'studio' | 'arena' | 'stats'
   metas: ConversationMeta[]
   currentId: string
   search: string
@@ -58,6 +62,8 @@ export function Sidebar({
   onNewChat: () => void
   onOpenModels: () => void
   onOpenKnowledge: () => void
+  onOpenStudio: () => void
+  onOpenArena: () => void
   onOpenStats: () => void
   pullActive: boolean
   pullPercent: number | null
@@ -163,6 +169,30 @@ export function Sidebar({
           >
             <BookOpen className="h-4 w-4" />
             Knowledge
+          </button>
+          <button
+            onClick={onOpenStudio}
+            className={
+              'mt-1 flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm transition ' +
+              (view === 'studio'
+                ? 'bg-panel2 text-fg'
+                : 'text-muted hover:bg-panel2/60 hover:text-fg')
+            }
+          >
+            <Sparkles className="h-4 w-4" />
+            Studio
+          </button>
+          <button
+            onClick={onOpenArena}
+            className={
+              'mt-1 flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm transition ' +
+              (view === 'arena'
+                ? 'bg-panel2 text-fg'
+                : 'text-muted hover:bg-panel2/60 hover:text-fg')
+            }
+          >
+            <Swords className="h-4 w-4" />
+            Arena
           </button>
           <button
             onClick={onOpenStats}

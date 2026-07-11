@@ -274,6 +274,19 @@
   animation: iris-rotate 6s linear infinite;
 }
 
+/* Mic listening: a soft accent ring pulsing outward around the button. */
+@keyframes iris-pulse-ring {
+  0% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--color-iris) 45%, transparent);
+  }
+  100% {
+    box-shadow: 0 0 0 8px color-mix(in srgb, var(--color-iris) 0%, transparent);
+  }
+}
+.mic-listening {
+  animation: iris-pulse-ring 1.4s ease-out infinite;
+}
+
 /* Reduced motion is a real code path: kill every keyframe and transition.
    (Springs collapse via MotionConfig; imperative paths are gated in JS.) */
 @media (prefers-reduced-motion: reduce) {

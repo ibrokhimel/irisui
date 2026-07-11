@@ -1,5 +1,17 @@
 import { useMemo, useState } from 'react'
 import { AnimatePresence, LazyMotion, MotionConfig, m } from 'motion/react'
+import {
+  Activity,
+  BookOpen,
+  Boxes,
+  MessageSquare,
+  PanelLeft,
+  Plus,
+  Settings,
+  Sparkles,
+  Square,
+  Swords,
+} from 'lucide-react'
 import { SPRING } from './lib/motion'
 import { Sidebar } from './components/Sidebar'
 import { TopBar } from './components/TopBar'
@@ -8,13 +20,19 @@ import { MessageList } from './components/MessageList'
 import { ChatInput } from './components/ChatInput'
 import { ModelsPage } from './components/ModelsPage'
 import { KnowledgePage } from './components/KnowledgePage'
+import { StudioPage } from './components/StudioPage'
+import { ArenaPage } from './components/ArenaPage'
 import { StatsPage } from './components/StatsPage'
 import { SettingsModal } from './components/SettingsModal'
+import { CommandPalette, type PaletteCommand } from './components/CommandPalette'
 import { useChat } from './hooks/useChat'
 import { useTheme } from './hooks/useTheme'
 import { useModelPrefs } from './hooks/useModelPrefs'
 import { useModelPull } from './hooks/useModelPull'
 import { useKbs } from './hooks/useKbs'
+import { useStudio } from './hooks/useStudio'
+import { useShortcuts } from './hooks/useShortcuts'
+import type { Persona } from './lib/studioStore'
 
 export default function App() {
   const chat = useChat()
@@ -22,9 +40,13 @@ export default function App() {
   const { prefs, setDefaultModel, toggleFavorite } = useModelPrefs()
   const pull = useModelPull(chat.refresh)
   const { kbs, reload: reloadKbs } = useKbs()
+  const { personas, prompts, reload: reloadStudio } = useStudio()
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [paletteOpen, setPaletteOpen] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(true)
-  const [view, setView] = useState<'chat' | 'models' | 'knowledge' | 'stats'>('chat')
+  const [view, setView] = useState<'chat' | 'models' | 'knowledge' | 'studio' | 'arena' | 'stats'>(
+    'chat',
+  )
 
   const empty = chat.messages.length === 0
 
@@ -48,6 +70,44 @@ export default function App() {
     void chat.selectChat(id)
     openChat()
   }
+  const handleChatWithPersona = (persona: Persona) => {
+    chat.newChatWithPersona(persona)
+    openChat()
+  }
+  const handleUsePrompt = (text: string) => {
+    chat.setInput(text)
+    openChat()
+  }
+
+  const activePersona = personas.find((p) => p.id === chat.personaId)
+
+  const paletteCommands: PaletteCommand[] = [
+    { id: 'new-chat', label: 'New chat', icon: Plus, run: handleNewChat },
+    { id: 'go-chat', label: 'Go to Chat', icon: MessageSquare, run: openChat },
+    { id: 'go-models', label: 'Go to Models', icon: Boxes, run: () => setView('models') },
+    { id: 'go-knowledge', label: 'Go to Knowledge', icon: BookOpen, run: () => setView('knowledge') },
+    { id: 'go-studio', label: 'Go to Studio', icon: Sparkles, run: () => setView('studio') },
+    { id: 'go-arena', label: 'Go to Arena', icon: Swords, run: () => setView('arena') },
+    { id: 'go-stats', label: 'Go to Stats', icon: Activity, run: () => setView('stats') },
+    { id: 'open-settings', label: 'Open Settings', icon: Settings, run: () => setSettingsOpen(true) },
+    {
+      id: 'toggle-sidebar',
+      label: 'Toggle sidebar',
+      icon: PanelLeft,
+      run: () => setSidebarOpen((o) => !o),
+    },
+    ...(chat.isStreaming
+      ? [{ id: 'stop-generating', label: 'Stop generating', icon: Square, run: chat.stop }]
+      : []),
+  ]
+
+  useShortcuts({
+    isDialogOpen: settingsOpen || paletteOpen,
+    isStreaming: chat.isStreaming,
+    onTogglePalette: () => setPaletteOpen((o) => !o),
+    onNewChat: handleNewChat,
+    onStopGenerating: chat.stop,
+  })
 
   const composerProps = {
     input: chat.input,
@@ -69,6 +129,8 @@ export default function App() {
     onSelectKb: chat.setKb,
     ragNotice: chat.ragNotice,
     onDismissRagNotice: chat.dismissRagNotice,
+    persona: activePersona ? { icon: activePersona.icon, name: activePersona.name } : undefined,
+    onClearPersona: chat.clearPersona,
   }
 
   // Keyed view swap: chat home / conversation / models / stats cross-fade.
@@ -88,6 +150,8 @@ export default function App() {
         onNewChat={handleNewChat}
         onOpenModels={() => setView('models')}
         onOpenKnowledge={() => setView('knowledge')}
+        onOpenStudio={() => setView('studio')}
+        onOpenArena={() => setView('arena')}
         onOpenStats={() => setView('stats')}
         pullActive={pull.pulling}
         pullPercent={pullPercent}
@@ -107,11 +171,22 @@ export default function App() {
               ? 'Models'
               : view === 'knowledge'
                 ? 'Knowledge'
-                : view === 'stats'
-                  ? 'Stats'
-                  : chat.title
+                : view === 'studio'
+                  ? 'Studio'
+                  : view === 'arena'
+                    ? 'Arena'
+                    : view === 'stats'
+                      ? 'Stats'
+                      : chat.title
           }
-          showTitle={view === 'models' || view === 'knowledge' || view === 'stats' || !empty}
+          showTitle={
+            view === 'models' ||
+            view === 'knowledge' ||
+            view === 'studio' ||
+            view === 'arena' ||
+            view === 'stats' ||
+            !empty
+          }
         />
 
         <AnimatePresence mode="wait" initial={false}>
@@ -141,6 +216,17 @@ export default function App() {
                 onChanged={reloadKbs}
                 pull={pull}
               />
+            ) : view === 'studio' ? (
+              <StudioPage
+                models={chat.models}
+                personas={personas}
+                prompts={prompts}
+                onChanged={reloadStudio}
+                onChatWithPersona={handleChatWithPersona}
+                onUsePrompt={handleUsePrompt}
+              />
+            ) : view === 'arena' ? (
+              <ArenaPage models={chat.models} status={chat.status} />
             ) : view === 'stats' ? (
               <StatsPage />
             ) : empty ? (
@@ -172,6 +258,8 @@ export default function App() {
         onSelectAccent={setAccent}
         onReset={reset}
       />
+
+      <CommandPalette open={paletteOpen} commands={paletteCommands} onClose={() => setPaletteOpen(false)} />
     </div>
     </LazyMotion>
     </MotionConfig>

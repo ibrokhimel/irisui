@@ -1,10 +1,21 @@
 import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
 import { AnimatePresence, m } from 'motion/react'
-import { AlertTriangle, ArrowUp, BookOpen, ChevronDown, SlidersHorizontal, Square, X } from 'lucide-react'
+import {
+  AlertTriangle,
+  ArrowUp,
+  BookOpen,
+  ChevronDown,
+  Mic,
+  MicOff,
+  SlidersHorizontal,
+  Square,
+  X,
+} from 'lucide-react'
 import { SPRING, TAP } from '../lib/motion'
 import type { Effort, OllamaModel, OllamaStatus } from '../types'
 import { EFFORT_OPTIONS, TEMP_MAX, TEMP_MIN, TEMP_STEP } from '../constants'
 import { DEFAULT_EMBED_MODEL } from '../lib/rag'
+import { useSpeechInput } from '../hooks/useSpeech'
 
 export interface KbOption {
   id: string
@@ -39,6 +50,8 @@ export function ChatInput({
   onSelectKb,
   ragNotice,
   onDismissRagNotice,
+  persona,
+  onClearPersona,
 }: {
   variant: 'hero' | 'docked'
   input: string
@@ -60,11 +73,26 @@ export function ChatInput({
   onSelectKb: (id: string | undefined) => void
   ragNotice: boolean
   onDismissRagNotice: () => void
+  persona?: { icon: string; name: string }
+  onClearPersona: () => void
 }) {
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const [controlsOpen, setControlsOpen] = useState(false)
   const [kbOpen, setKbOpen] = useState(false)
   const selectedKb = kbs.find((k) => k.id === selectedKbId)
+
+  // Voice input appends onto whatever was already typed when the mic was
+  // pressed — `baseInput` is snapshotted at the start of each listening session.
+  const baseInputRef = useRef('')
+  const { supported: micSupported, listening, toggle: toggleMic } = useSpeechInput((text) => {
+    const base = baseInputRef.current
+    const sep = base && !base.endsWith(' ') ? ' ' : ''
+    setInput(base + sep + text)
+  })
+  const handleMicClick = () => {
+    if (!listening) baseInputRef.current = input
+    toggleMic()
+  }
 
   useEffect(() => {
     const el = textareaRef.current
@@ -296,8 +324,38 @@ export function ChatInput({
               </AnimatePresence>
             </div>
 
-            {/* Right cluster: model picker + send */}
+            {/* Voice input */}
+            {micSupported && (
+              <button
+                type="button"
+                onClick={handleMicClick}
+                aria-label={listening ? 'Stop voice input' : 'Voice input'}
+                aria-pressed={listening}
+                title={listening ? 'Listening… click to stop' : 'Voice input'}
+                className={
+                  'flex h-8 w-8 items-center justify-center rounded-lg transition ' +
+                  (listening
+                    ? 'mic-listening bg-iris/10 text-iris'
+                    : 'text-muted hover:bg-panel hover:text-fg')
+                }
+              >
+                {listening ? <MicOff className="h-[18px] w-[18px]" /> : <Mic className="h-[18px] w-[18px]" />}
+              </button>
+            )}
+
+            {/* Right cluster: persona chip + model picker + send */}
             <div className="ml-auto flex items-center gap-1.5">
+              {persona && (
+                <button
+                  onClick={onClearPersona}
+                  title={`Persona: ${persona.name} — click to clear`}
+                  className="flex items-center gap-1.5 rounded-lg border border-iris/30 bg-iris/10 px-2 py-1.5 text-xs font-medium text-iris transition hover:border-iris/50"
+                >
+                  <span className="text-sm leading-none">{persona.icon}</span>
+                  <span className="max-w-[100px] truncate">{persona.name}</span>
+                  <X className="h-3 w-3" />
+                </button>
+              )}
               <div className="flex items-center gap-1.5 rounded-lg px-2 py-1.5 transition hover:bg-panel">
                 <span className={'h-1.5 w-1.5 shrink-0 rounded-full ' + STATUS_DOT[status]} />
                 <div className="relative flex items-center">
