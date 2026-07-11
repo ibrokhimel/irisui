@@ -1,10 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { ChevronUp, Clock, HardDrive, RefreshCw, Thermometer } from 'lucide-react'
-import type { MessageStat } from '../lib/stats'
 import { listStats } from '../lib/statsStore'
 import { useSystemMonitor } from '../hooks/useSystemMonitor'
-import { GIB, formatTimeLeft, pushSample, vramFit } from '../lib/system'
+import { GIB, formatTimeLeft, vramFit } from '../lib/system'
 import { formatBytes, formatGbFigure } from '../lib/format'
 import { Sparkline } from './Sparkline'
 
@@ -32,55 +31,36 @@ function Bar({ pct }: { pct: number }) {
 }
 
 export function SystemMonitor({
-  selectedModel, isStreaming, lastStat, onCollapse,
+  selectedModel, isStreaming, onCollapse,
 }: {
   selectedModel: string
   isStreaming: boolean
-  lastStat?: MessageStat
   onCollapse: () => void
 }) {
   const mon = useSystemMonitor({ isStreaming })
 
-  // Tokens/sec history: seed from the stats store (last 20 completed
-  // generations), then append at the falling edge of isStreaming — the point
-  // where a generation just finished and lastStat has been updated to match
-  // it (useChat batches setIsStreaming(false) and the new-stat setCurrent(...)
-  // into one commit). This is deliberately NOT keyed on lastStat's identity:
-  // switching conversations rebuilds the whole message graph from IndexedDB,
-  // handing the panel a brand-new MessageStat object for an *old* generation
-  // with no falling edge involved — an identity-only guard would misfire on
-  // that and append a duplicate sample.
-  //
-  // The seed (IndexedDB read) and the append (keyed on the streaming edge)
-  // both run in the mount flush, and the seed is async — so on a mount where
-  // a generation is already streaming, the append can land before the seed
-  // resolves. The seed therefore MERGES in front of whatever has appended
-  // since mount rather than choosing one or the other: these are disjoint
-  // sets (history predating this mount vs. generations completing after it),
-  // so concatenation combines them instead of discarding either.
   const [tpsHistory, setTpsHistory] = useState<number[]>([])
-  useEffect(() => {
-    let cancelled = false
-    void listStats(20).then((stats) => {
-      if (cancelled) return
-      const seeded = stats.map((s) => s.tokensPerSec).filter((n) => n > 0).reverse()
-      setTpsHistory((h) => [...seeded, ...h].slice(-20))
-    }).catch(() => { /* stats are best-effort */ })
-    return () => { cancelled = true }
-  }, [])
   const wasStreamingRef = useRef(isStreaming)
-  const lastAppendedRef = useRef<MessageStat | undefined>(undefined)
+  const reqRef = useRef(0)
+
+  // The stats store is the single source of truth for generation history: it is
+  // global (not per-conversation) and immune to the object-identity churn that a
+  // conversation switch causes. Re-read it on mount and whenever a generation
+  // finishes; replacing (never appending) makes a duplicate sample impossible.
   useEffect(() => {
     const justFinished = wasStreamingRef.current && !isStreaming
     wasStreamingRef.current = isStreaming
-    if (!justFinished) return
-    const s = lastStat
-    // A stopped/aborted stream attaches no new stat, so lastStat would still be
-    // the previous generation's — the identity check keeps it out of the graph.
-    if (!s || s.tokensPerSec <= 0 || s === lastAppendedRef.current) return
-    lastAppendedRef.current = s
-    setTpsHistory((h) => pushSample(h, s.tokensPerSec, 20))
-  }, [isStreaming, lastStat])
+    if (!justFinished && reqRef.current > 0) return   // only mount + falling edges
+
+    const seq = ++reqRef.current
+    void listStats(20)
+      .then((stats) => {
+        // A slower earlier read must never overwrite a newer one.
+        if (seq !== reqRef.current) return
+        setTpsHistory(stats.map((s) => s.tokensPerSec).filter((n) => n > 0).reverse())
+      })
+      .catch(() => { /* stats are best-effort */ })
+  }, [isStreaming])
 
   const gpu = mon.system?.gpu ?? null
   const fit = vramFit(mon.running)
