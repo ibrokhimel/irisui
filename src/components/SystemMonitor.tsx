@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { ChevronUp, Clock, HardDrive, RefreshCw, Thermometer } from 'lucide-react'
 import type { MessageStat } from '../lib/stats'
@@ -44,18 +44,29 @@ export function SystemMonitor({
   // Tokens/sec history: seed from the stats store (last 20 completed
   // generations), then append as each new response finishes. lastStat's object
   // identity changes exactly once per completed generation.
+  //
+  // The seed (IndexedDB read) and the append (keyed on lastStat) both run in
+  // the mount flush, and the seed is async — so on a mount where lastStat is
+  // already populated (e.g. reopening a collapsed panel), the append can land
+  // before the seed resolves. The seed therefore MERGES in front of whatever
+  // has appended since mount rather than choosing one or the other: these are
+  // disjoint sets (history predating this mount vs. generations completing
+  // after it), so concatenation combines them instead of discarding either.
+  // The mount-time stat is excluded from the append (see mountStatRef below)
+  // since the seed will already carry it — otherwise it would double-count.
   const [tpsHistory, setTpsHistory] = useState<number[]>([])
+  const mountStatRef = useRef(lastStat)
   useEffect(() => {
     let cancelled = false
     void listStats(20).then((stats) => {
       if (cancelled) return
       const seeded = stats.map((s) => s.tokensPerSec).filter((n) => n > 0).reverse()
-      // Never clobber a sample appended while this promise was in flight.
-      setTpsHistory((h) => (h.length > 0 ? h : seeded))
+      setTpsHistory((h) => [...seeded, ...h].slice(-20))
     }).catch(() => { /* stats are best-effort */ })
     return () => { cancelled = true }
   }, [])
   useEffect(() => {
+    if (lastStat === mountStatRef.current) return
     if (lastStat && lastStat.tokensPerSec > 0) {
       setTpsHistory((h) => pushSample(h, lastStat.tokensPerSec, 20))
     }
