@@ -114,6 +114,10 @@
 .markdown > *:last-child {
   margin-bottom: 0;
 }
+/* The code-block copy wrapper is a div; keep a trailing block flush too. */
+.markdown > div:last-child pre {
+  margin-bottom: 0;
+}
 .markdown p {
   margin: 0 0 12px;
 }

@@ -7,10 +7,12 @@ export function MessageList({
   messages,
   isStreaming,
   onRegenerate,
+  onContinue,
 }: {
   messages: ChatMessage[]
   isStreaming: boolean
   onRegenerate: () => void
+  onContinue: () => void
 }) {
   const bottomRef = useRef<HTMLDivElement>(null)
   const reduced = useReducedMotion()
@@ -33,6 +35,7 @@ export function MessageList({
               streaming={isStreaming && m.role === 'assistant' && isLast}
               isLast={isLast}
               onRegenerate={!isStreaming ? onRegenerate : undefined}
+              onContinue={!isStreaming ? onContinue : undefined}
             />
           )
         })}
