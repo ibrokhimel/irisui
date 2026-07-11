@@ -30,6 +30,9 @@ export interface MessageStat {
   promptTokens?: number
   /** Absent when the model has no known price. */
   costUsd?: number
+  /** The prompt filled the whole window, so Ollama context-shifted: this reply
+   *  was generated against a conversation with its oldest turns dropped. */
+  truncated?: boolean
 }
 
 export interface ModelSummary {

@@ -1,11 +1,13 @@
 import type { Effort } from '../types'
-import {
-  DEFAULT_NUM_CTX,
-  DEFAULT_TEMPERATURE,
-  NUM_CTX_MIN,
-  TEMP_MAX,
-  TEMP_MIN,
-} from '../constants'
+import { DEFAULT_TEMPERATURE, NUM_CTX_MIN, TEMP_MAX, TEMP_MIN } from '../constants'
+
+/**
+ * 'auto' derives the window per model from its KV-cache geometry and the user's
+ * RAM (see lib/kvCache.ts), rather than pinning one number that is wrong for
+ * every model but one. A number pins it explicitly — the escape hatch for when
+ * our estimate is off, which it can be: a browser cannot see VRAM.
+ */
+export type NumCtxSetting = number | 'auto'
 
 /** Which engine turns speech into text.
  *  auto  - try the browser's service, fall back to on-device Whisper if it's unreachable
@@ -24,8 +26,8 @@ export interface AppSettings {
   ollamaUrl: string
   defaultEffort: Effort
   defaultTemperature: number
-  /** num_ctx passed to Ollama for new chats. See DEFAULT_NUM_CTX. */
-  defaultNumCtx: number
+  /** num_ctx new chats start with. 'auto' = derive it per model. */
+  defaultNumCtx: NumCtxSetting
   voiceEngine: VoiceEngine
   /** Hugging Face repo id of the on-device Whisper model. See lib/asrModels.ts. */
   asrModel: string
@@ -44,7 +46,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   ollamaUrl: '',
   defaultEffort: 'balanced',
   defaultTemperature: DEFAULT_TEMPERATURE,
-  defaultNumCtx: DEFAULT_NUM_CTX,
+  defaultNumCtx: 'auto',
   voiceEngine: 'auto',
   asrModel: DEFAULT_ASR_MODEL,
   ttsVoiceURI: '',
@@ -65,8 +67,16 @@ function clampTemperature(n: number): number {
 
 /** Any positive integer is legal (models differ wildly); only the floor is enforced. */
 export function clampNumCtx(n: number): number {
-  if (!Number.isFinite(n)) return DEFAULT_NUM_CTX
+  if (!Number.isFinite(n)) return NUM_CTX_MIN
   return Math.max(NUM_CTX_MIN, Math.round(n))
+}
+
+function readNumCtx(v: unknown): NumCtxSetting {
+  if (v === 'auto') return 'auto'
+  // A non-finite number is garbage, not a request for the smallest window —
+  // fall back to the default rather than silently pinning the chat to 512.
+  if (typeof v === 'number' && Number.isFinite(v)) return clampNumCtx(v)
+  return DEFAULT_SETTINGS.defaultNumCtx
 }
 
 export function loadAppSettings(): AppSettings {
@@ -81,10 +91,7 @@ export function loadAppSettings(): AppSettings {
         typeof p.defaultTemperature === 'number'
           ? clampTemperature(p.defaultTemperature)
           : DEFAULT_SETTINGS.defaultTemperature,
-      defaultNumCtx:
-        typeof p.defaultNumCtx === 'number'
-          ? clampNumCtx(p.defaultNumCtx)
-          : DEFAULT_SETTINGS.defaultNumCtx,
+      defaultNumCtx: readNumCtx(p.defaultNumCtx),
       voiceEngine: isEngine(p.voiceEngine) ? p.voiceEngine : DEFAULT_SETTINGS.voiceEngine,
       asrModel:
         typeof p.asrModel === 'string' && p.asrModel.trim()
@@ -106,7 +113,7 @@ export function saveAppSettings(s: AppSettings): void {
         ollamaUrl: s.ollamaUrl.trim(),
         defaultEffort: isEffort(s.defaultEffort) ? s.defaultEffort : DEFAULT_SETTINGS.defaultEffort,
         defaultTemperature: clampTemperature(s.defaultTemperature),
-        defaultNumCtx: clampNumCtx(s.defaultNumCtx),
+        defaultNumCtx: readNumCtx(s.defaultNumCtx),
         voiceEngine: isEngine(s.voiceEngine) ? s.voiceEngine : DEFAULT_SETTINGS.voiceEngine,
         asrModel: s.asrModel.trim() || DEFAULT_SETTINGS.asrModel,
         ttsVoiceURI: s.ttsVoiceURI,

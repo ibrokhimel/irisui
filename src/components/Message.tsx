@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { AnimatePresence, m } from 'motion/react'
-import { Check, Copy, RefreshCw, Square, StepForward, Volume2 } from 'lucide-react'
+import { AlertTriangle, Check, Copy, RefreshCw, Square, StepForward, Volume2 } from 'lucide-react'
 import type { ChatMessage, ChatSource } from '../types'
 import { SPRING, fadeUp } from '../lib/motion'
 import { Markdown } from './Markdown'
@@ -90,6 +90,13 @@ export function Message({
         {message.content && <Markdown content={message.content} />}
         {streaming && <span className="stream-caret align-middle" aria-hidden="true" />}
 
+        {!streaming && message.stat?.truncated && (
+          <p className="mt-1.5 flex items-center gap-1.5 text-[11px] font-medium text-rose-300">
+            <AlertTriangle className="h-3 w-3 shrink-0" />
+            History truncated — the prompt filled the context window, so Ollama dropped the oldest
+            messages. This reply was written without them.
+          </p>
+        )}
         {!streaming && message.stat && (
           <p className="mt-1.5 font-mono text-[11px] text-muted/70">{formatStatLine(message.stat)}</p>
         )}

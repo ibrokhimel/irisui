@@ -32,17 +32,47 @@ export const TEMP_STEP = 0.1
 export const DEFAULT_TEMPERATURE = 0.7
 
 /**
- * Ollama truncates every prompt to `num_ctx` and defaults to 4096 no matter
- * what the model was trained for — so a 128k model silently runs at 4k unless
- * we pass the option. DEFAULT_NUM_CTX matches Ollama's own default, which
- * keeps behavior identical for anyone who never touches the setting.
+ * Ollama defaults `num_ctx` to 4096 no matter what the model was trained for,
+ * so a 256k model silently runs at 4k unless we pass the option. Worse, once a
+ * conversation outgrows the window llama.cpp *context-shifts*: it discards the
+ * oldest half of the KV cache and keeps going, so the model quietly forgets the
+ * start of the chat with nothing in the UI to say so. We size the window from
+ * the model's real geometry instead, and hard-block sends that would overflow it.
  *
- * Raising it costs VRAM (the KV cache grows with the window), so the UI offers
- * discrete steps clamped to the model's trained maximum rather than a free slider.
+ * DEFAULT_NUM_CTX is only the fallback for when a model's geometry can't be
+ * read — it matches Ollama's own default, so an unreadable model is never made
+ * worse than the status quo by a guess.
  */
 export const DEFAULT_NUM_CTX = 4096
-export const NUM_CTX_OPTIONS = [2048, 4096, 8192, 16384, 32768, 65536, 131072]
+
+/**
+ * Auto-sizing never goes below Ollama's own default, even when the RAM budget
+ * says it should. A browser cannot read system RAM — navigator.deviceMemory is
+ * capped at 8 GB by spec — so when the user hasn't set their RAM we assume 8 GB,
+ * and a big model's weights alone can then exhaust the budget. Letting that
+ * arithmetic win would hand an unconfigured user a SMALLER window than they have
+ * today, which is a regression dressed up as a feature. The floor makes auto
+ * strictly non-worse than the status quo; setting your real RAM is what unlocks
+ * the upside.
+ */
+export const NUM_CTX_FLOOR = DEFAULT_NUM_CTX
+
+/** Manual pinning can still go below the auto floor — 2048 is a legitimate
+ *  choice on a memory-starved machine, it just isn't one we'll make for you. */
+export const NUM_CTX_LADDER = [2048, 4096, 8192, 16384, 32768, 65536, 131072, 262144]
 export const NUM_CTX_MIN = 512
+
+/**
+ * Share of system RAM that auto-sizing may spend on weights + KV cache combined.
+ * The rest is headroom for the OS, the browser, and whatever else is running.
+ * Overcommitting here doesn't fail loudly — it just makes the whole machine
+ * crawl as it swaps, which is worse than a smaller window.
+ */
+export const RAM_BUDGET_FRACTION = 0.6
+
+/** Tokens held back from the window for the model's REPLY, so a prompt that
+ *  only just fits doesn't leave the answer nowhere to land. */
+export const CTX_RESERVE_TOKENS = 1024
 
 /** Fractions of num_ctx at which the context meter changes color. */
 export const CTX_WARN_PCT = 0.75

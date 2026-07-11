@@ -1,7 +1,10 @@
 import type { OllamaModel } from '../types'
+import type { NumCtxSetting } from './appSettings'
 import { loadAppSettings } from './appSettings'
 import { parseContextLength } from './context'
 import { appFetch } from './http'
+import { autoContextLength, kvBytesPerToken, parseKvGeometry } from './kvCache'
+import type { AutoContext } from './kvCache'
 
 /**
  * Base URL for every Ollama request: the custom host configured in Settings if
@@ -185,25 +188,67 @@ export async function showModel(name: string): Promise<ModelDetails> {
   return (await res.json()) as ModelDetails
 }
 
-const contextLengthCache = new Map<string, number | undefined>()
+export interface ModelKvProfile {
+  /** The model's trained maximum context. Undefined when /api/show doesn't say. */
+  trainedMax?: number
+  /** Bytes of KV cache per token of context. Undefined when the geometry is unreadable. */
+  bytesPerToken?: number
+}
+
+const kvProfileCache = new Map<string, ModelKvProfile>()
 
 /**
- * Cached wrapper around showModel + parseContextLength. /api/show is a real
- * network round-trip and the context meter's tooltip wants this per model
- * name repeatedly, so results (including "unknown") are memoized for the
- * life of the module.
+ * Cached /api/show lookup of everything needed to size a context window. It's a
+ * real network round-trip and both the meter and every send want it per model
+ * name, so results are memoized — including "we couldn't read it", which is a
+ * real answer and shouldn't be re-fetched.
+ *
+ * Network failures are deliberately NOT cached: a transient hiccup must not
+ * permanently pin a model to the fallback window.
  */
-export async function getModelContextLength(name: string): Promise<number | undefined> {
-  if (contextLengthCache.has(name)) return contextLengthCache.get(name)
+export async function getModelKvProfile(name: string): Promise<ModelKvProfile> {
+  const cached = kvProfileCache.get(name)
+  if (cached) return cached
   try {
-    const length = parseContextLength(await showModel(name))
-    contextLengthCache.set(name, length)
-    return length
+    const details = await showModel(name)
+    const geometry = parseKvGeometry(details)
+    const profile: ModelKvProfile = {
+      trainedMax: parseContextLength(details),
+      bytesPerToken: geometry ? kvBytesPerToken(geometry) : undefined,
+    }
+    kvProfileCache.set(name, profile)
+    return profile
   } catch {
-    // Don't cache network failures — a transient hiccup shouldn't permanently
-    // hide the trained-max hint; the next call gets to try again.
-    return undefined
+    return {}
   }
+}
+
+export async function getModelContextLength(name: string): Promise<number | undefined> {
+  return (await getModelKvProfile(name)).trainedMax
+}
+
+/**
+ * Turn a num_ctx SETTING into the number actually sent to Ollama.
+ *
+ * 'auto' resolves per model rather than once per chat: the affordable window
+ * depends on the model's KV geometry, and the user can switch models
+ * mid-conversation. `modelBytes` (the weights size from /api/tags) is subtracted
+ * from the RAM budget, since weights and KV cache compete for the same memory.
+ */
+export async function resolveNumCtx(input: {
+  model: string
+  setting: NumCtxSetting
+  modelBytes: number
+  ramGb: number
+}): Promise<AutoContext> {
+  if (input.setting !== 'auto') return { numCtx: input.setting, reason: 'manual' }
+  const { trainedMax, bytesPerToken } = await getModelKvProfile(input.model)
+  return autoContextLength({
+    trainedMax,
+    bytesPerToken,
+    modelBytes: input.modelBytes,
+    ramGb: input.ramGb,
+  })
 }
 
 export interface BenchmarkResult {
