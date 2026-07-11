@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Check, RotateCcw, SwatchBook } from 'lucide-react'
 import type { CustomThemeVars, ThemePreset, ThemeSettings } from '../theme'
 import { ACCENTS, CUSTOM_TOKEN_LABELS, CUSTOM_TOKEN_MAP, PRESETS, customToVars, isValidHex } from '../theme'
@@ -12,6 +12,16 @@ type ConcretePreset = Exclude<ThemePreset, 'custom'>
 // is unambiguous.
 const COMPLETE_HEX_RE = /^#?[0-9a-fA-F]{6}$/
 
+// Normalize for commit: trim first, THEN check for a leading '#'. Committing
+// the untrimmed string (e.g. " 1a0b2e" -> "# 1a0b2e") passes trimmed
+// validation but produces a value every downstream consumer rejects, so the
+// trimmed string must be what actually gets committed, not just what gets
+// validated.
+function toHex(raw: string): string {
+  const trimmed = raw.trim()
+  return trimmed.startsWith('#') ? trimmed : `#${trimmed}`
+}
+
 function TokenRow({
   label, value, onChange,
 }: {
@@ -22,18 +32,42 @@ function TokenRow({
   // Draft always mirrors exactly what the user typed, so the field never
   // jumps to a normalized/expanded value mid-typing.
   const [draft, setDraft] = useState<string | null>(null)
+  // Rows are keyed by a stable token key and stay mounted across theme
+  // changes (e.g. "Start from: <preset>" reseeds all six custom colors in
+  // place). This tracks the hex this row itself last committed, so the
+  // resync effect below can tell "value changed because we just committed
+  // it" apart from "value changed out from under us" — only the latter
+  // should discard an in-progress draft.
+  const lastCommitted = useRef<string | null>(null)
+
+  // If `value` changes for a reason other than this row's own commit, any
+  // held draft is stale: drop it so the field falls back to the real value
+  // instead of silently overwriting the reseeded/updated color on the next
+  // blur. Typing alone never changes `value` (only onChange does), so this
+  // only fires on an external change, keeping in-progress typing intact.
+  useEffect(() => {
+    if (value !== lastCommitted.current) {
+      setDraft(null)
+    }
+  }, [value])
+
+  const commit = (raw: string) => {
+    const hex = toHex(raw)
+    lastCommitted.current = hex
+    onChange(hex)
+  }
 
   const handleTyping = (v: string) => {
     setDraft(v)
     if (COMPLETE_HEX_RE.test(v.trim())) {
-      onChange(v.startsWith('#') ? v : `#${v}`)
+      commit(v)
     }
   }
 
   const finalizeDraft = () => {
     if (draft === null) return
     if (isValidHex(draft)) {
-      onChange(draft.startsWith('#') ? draft : `#${draft}`)
+      commit(draft)
     }
     setDraft(null)
   }
@@ -46,6 +80,7 @@ function TokenRow({
           type="color"
           value={value}
           onChange={(e) => {
+            lastCommitted.current = e.target.value
             onChange(e.target.value)
             setDraft(null)
           }}
