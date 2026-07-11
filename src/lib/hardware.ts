@@ -1,6 +1,6 @@
 export interface HardwareProfile { ramGb: number; cores: number | null; source: 'manual' | 'detected' }
 export const RAM_OPTIONS = [8, 16, 32, 64, 128]
-const KEY = 'irisui.hardware'
+export const KEY = 'irisui.hardware'
 
 export function detectHardware(
   nav: { deviceMemory?: number; hardwareConcurrency?: number } =

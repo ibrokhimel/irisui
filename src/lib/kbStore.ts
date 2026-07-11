@@ -1,5 +1,6 @@
 import type { Chunk } from './rag'
 import { CHUNKS, KBS, openDB } from './idbStore'
+import { isDataWiped } from './backup'
 
 /**
  * IndexedDB persistence for knowledge bases and their embedded chunks.
@@ -34,6 +35,7 @@ export async function listKbs(): Promise<KnowledgeBase[]> {
 }
 
 export async function createKb(name: string, embedModel: string): Promise<KnowledgeBase> {
+  if (isDataWiped()) throw new Error('Data has been deleted — reload the app')
   const db = await getDB()
   const kb: KnowledgeBase = {
     id: crypto.randomUUID(),
@@ -80,6 +82,7 @@ export async function addChunks(
   fileName: string,
   chunks: StoredChunk[],
 ): Promise<void> {
+  if (isDataWiped()) return
   const db = await getDB()
 
   // Look up the kb first: if it doesn't exist, reject and write nothing —

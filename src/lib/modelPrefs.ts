@@ -7,7 +7,7 @@ export interface ModelPrefs {
   favorites: string[]
 }
 
-const KEY = 'irisui.models'
+export const KEY = 'irisui.models'
 export const EMPTY_PREFS: ModelPrefs = { defaultModel: '', favorites: [] }
 
 export function loadModelPrefs(): ModelPrefs {

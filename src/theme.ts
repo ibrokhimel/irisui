@@ -71,7 +71,7 @@ export const ACCENTS: AccentSwatch[] = [
 
 export const DEFAULT_THEME: ThemeSettings = { preset: 'dark', accent: '#c96442' }
 
-const STORAGE_KEY = 'irisui.theme'
+export const STORAGE_KEY = 'irisui.theme'
 
 // ── color helpers ─────────────────────────────────────────────────────
 function clamp(n: number): number {

@@ -1,30 +1,34 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { ChatMessage, Effort, OllamaModel, OllamaStatus } from '../types'
-import { DEFAULT_TEMPERATURE } from '../constants'
 import { fetchModels, isAbortError, streamChat } from '../lib/ollama'
 import { getStore } from '../lib/store'
 import type { Conversation, ConversationMeta } from '../lib/store'
 import { download, slugify, toJSON, toMarkdown } from '../lib/exporters'
 import { loadModelPrefs } from '../lib/modelPrefs'
+import { loadAppSettings } from '../lib/appSettings'
 import { isLikelyEmbeddingModel } from '../lib/modelCatalog'
 import { computeStat, toMessageStat } from '../lib/stats'
 import type { MessageStat } from '../lib/stats'
 import { addStat } from '../lib/statsStore'
+import { isDataWiped } from '../lib/backup'
 import { retrieveContext } from '../lib/retrieve'
 import type { RagContext } from '../lib/retrieve'
 import { resolveSystemPrompt } from '../lib/personaPrompt'
 import type { Persona } from '../lib/studioStore'
 
+/** New chats start from the Chat defaults in Settings — read fresh here (not at
+ *  import time) so a Settings change applies to the very next chat. */
 function newConversation(model: string): Conversation {
   const now = Date.now()
+  const settings = loadAppSettings()
   return {
     id: crypto.randomUUID(),
     title: 'New chat',
     createdAt: now,
     updatedAt: now,
     model,
-    effort: 'balanced',
-    temperature: DEFAULT_TEMPERATURE,
+    effort: settings.defaultEffort,
+    temperature: settings.defaultTemperature,
     messages: [],
   }
 }
@@ -91,6 +95,7 @@ export function useChat() {
 
   const persist = useCallback(
     async (conv: Conversation) => {
+      if (isDataWiped()) return
       try {
         await store.put(conv)
         setMetas((prev) => {

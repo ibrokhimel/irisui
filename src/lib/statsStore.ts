@@ -1,10 +1,12 @@
 import type { GenerationStat } from './stats'
 import { STATS, openDB } from './idbStore'
+import { isDataWiped } from './backup'
 
 let dbp: Promise<IDBDatabase> | null = null
 const getDB = () => (dbp ??= openDB())
 
 export async function addStat(stat: GenerationStat): Promise<void> {
+  if (isDataWiped()) return
   try {
     const db = await getDB()
     await new Promise<void>((resolve, reject) => {

@@ -1,9 +1,10 @@
-import { useMemo, useState } from 'react'
+import { lazy, Suspense, useMemo, useState } from 'react'
 import { AnimatePresence, LazyMotion, MotionConfig, m } from 'motion/react'
 import {
   Activity,
   BookOpen,
   Boxes,
+  Loader2,
   MessageSquare,
   PanelLeft,
   Plus,
@@ -18,15 +19,11 @@ import { TopBar } from './components/TopBar'
 import { HomeScreen } from './components/HomeScreen'
 import { MessageList } from './components/MessageList'
 import { ChatInput } from './components/ChatInput'
-import { ModelsPage } from './components/ModelsPage'
-import { KnowledgePage } from './components/KnowledgePage'
-import { StudioPage } from './components/StudioPage'
-import { ArenaPage } from './components/ArenaPage'
-import { StatsPage } from './components/StatsPage'
 import { SettingsModal } from './components/SettingsModal'
 import { CommandPalette, type PaletteCommand } from './components/CommandPalette'
 import { useChat } from './hooks/useChat'
 import { useTheme } from './hooks/useTheme'
+import { useAppSettings } from './hooks/useAppSettings'
 import { useModelPrefs } from './hooks/useModelPrefs'
 import { useModelPull } from './hooks/useModelPull'
 import { useKbs } from './hooks/useKbs'
@@ -34,9 +31,38 @@ import { useStudio } from './hooks/useStudio'
 import { useShortcuts } from './hooks/useShortcuts'
 import type { Persona } from './lib/studioStore'
 
+// Heavy/secondary views, split into their own chunks. StatsPage in particular
+// pulls in recharts, which is by far the largest dependency in the app.
+const ModelsPage = lazy(() =>
+  import('./components/ModelsPage').then((mod) => ({ default: mod.ModelsPage })),
+)
+const KnowledgePage = lazy(() =>
+  import('./components/KnowledgePage').then((mod) => ({ default: mod.KnowledgePage })),
+)
+const StudioPage = lazy(() =>
+  import('./components/StudioPage').then((mod) => ({ default: mod.StudioPage })),
+)
+const ArenaPage = lazy(() =>
+  import('./components/ArenaPage').then((mod) => ({ default: mod.ArenaPage })),
+)
+const StatsPage = lazy(() =>
+  import('./components/StatsPage').then((mod) => ({ default: mod.StatsPage })),
+)
+
+// Minimal fallback for lazy views — matches the spinner styling already used
+// for the model-pull indicator in the sidebar (Loader2 + text-iris).
+function PageFallback() {
+  return (
+    <div className="flex flex-1 items-center justify-center">
+      <Loader2 className="h-5 w-5 animate-spin text-iris" />
+    </div>
+  )
+}
+
 export default function App() {
   const chat = useChat()
   const { theme, setPreset, setAccent, reset } = useTheme()
+  const { settings: appSettings, update: updateAppSettings } = useAppSettings()
   const { prefs, setDefaultModel, toggleFavorite } = useModelPrefs()
   const pull = useModelPull(chat.refresh)
   const { kbs, reload: reloadKbs } = useKbs()
@@ -199,36 +225,46 @@ export default function App() {
             transition={{ duration: 0.16, ease: 'easeOut' }}
           >
             {view === 'models' ? (
-              <ModelsPage
-                models={chat.models}
-                status={chat.status}
-                onRefresh={chat.refresh}
-                prefs={prefs}
-                onSetDefault={setDefaultModel}
-                onToggleFavorite={toggleFavorite}
-                pull={pull}
-              />
+              <Suspense fallback={<PageFallback />}>
+                <ModelsPage
+                  models={chat.models}
+                  status={chat.status}
+                  onRefresh={chat.refresh}
+                  prefs={prefs}
+                  onSetDefault={setDefaultModel}
+                  onToggleFavorite={toggleFavorite}
+                  pull={pull}
+                />
+              </Suspense>
             ) : view === 'knowledge' ? (
-              <KnowledgePage
-                models={chat.models}
-                status={chat.status}
-                kbs={kbs}
-                onChanged={reloadKbs}
-                pull={pull}
-              />
+              <Suspense fallback={<PageFallback />}>
+                <KnowledgePage
+                  models={chat.models}
+                  status={chat.status}
+                  kbs={kbs}
+                  onChanged={reloadKbs}
+                  pull={pull}
+                />
+              </Suspense>
             ) : view === 'studio' ? (
-              <StudioPage
-                models={chat.models}
-                personas={personas}
-                prompts={prompts}
-                onChanged={reloadStudio}
-                onChatWithPersona={handleChatWithPersona}
-                onUsePrompt={handleUsePrompt}
-              />
+              <Suspense fallback={<PageFallback />}>
+                <StudioPage
+                  models={chat.models}
+                  personas={personas}
+                  prompts={prompts}
+                  onChanged={reloadStudio}
+                  onChatWithPersona={handleChatWithPersona}
+                  onUsePrompt={handleUsePrompt}
+                />
+              </Suspense>
             ) : view === 'arena' ? (
-              <ArenaPage models={chat.models} status={chat.status} />
+              <Suspense fallback={<PageFallback />}>
+                <ArenaPage models={chat.models} status={chat.status} />
+              </Suspense>
             ) : view === 'stats' ? (
-              <StatsPage />
+              <Suspense fallback={<PageFallback />}>
+                <StatsPage />
+              </Suspense>
             ) : empty ? (
               <HomeScreen
                 status={chat.status}
@@ -257,6 +293,14 @@ export default function App() {
         onSelectPreset={setPreset}
         onSelectAccent={setAccent}
         onReset={reset}
+        appSettings={appSettings}
+        onUpdateAppSettings={updateAppSettings}
+        defaultModel={prefs.defaultModel}
+        onGoToModels={() => {
+          setView('models')
+          setSettingsOpen(false)
+        }}
+        onBeforeWipe={chat.stop}
       />
 
       <CommandPalette open={paletteOpen} commands={paletteCommands} onClose={() => setPaletteOpen(false)} />
