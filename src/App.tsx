@@ -172,7 +172,7 @@ export default function App() {
   ]
 
   useShortcuts({
-    isDialogOpen: settingsOpen || paletteOpen,
+    isDialogOpen: settingsOpen || paletteOpen || migrationNoticeOpen,
     isStreaming: chat.isStreaming,
     onTogglePalette: () => setPaletteOpen((o) => !o),
     onNewChat: handleNewChat,
