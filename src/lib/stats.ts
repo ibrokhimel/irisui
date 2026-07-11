@@ -19,12 +19,16 @@ export interface MessageStat {
   ttftMs: number
   totalMs: number
   completionTokens: number
+  /** Absent on messages persisted before context-window tracking shipped —
+   *  consumers must tolerate it being undefined and omit that segment. */
+  promptTokens?: number
 }
 
 export interface ModelSummary {
   model: string; count: number
   avgTokensPerSec: number; avgTtftMs: number; avgTotalMs: number
   lastUsed: number
+  totalPromptTokens: number; totalCompletionTokens: number; avgPromptTokens: number
 }
 
 export function computeStat(input: {
@@ -56,6 +60,7 @@ export function toMessageStat(stat: GenerationStat): MessageStat {
   return {
     model: stat.model, tokensPerSec: stat.tokensPerSec,
     ttftMs: stat.ttftMs, totalMs: stat.totalMs, completionTokens: stat.completionTokens,
+    promptTokens: stat.promptTokens,
   }
 }
 
@@ -67,6 +72,7 @@ export function summarizeByModel(stats: GenerationStat[]): ModelSummary[] {
     groups.set(s.model, g)
   }
   const avg = (xs: number[]) => xs.reduce((a, b) => a + b, 0) / xs.length
+  const sum = (xs: number[]) => xs.reduce((a, b) => a + b, 0)
   return [...groups.entries()]
     .map(([model, g]) => ({
       model, count: g.length,
@@ -74,10 +80,17 @@ export function summarizeByModel(stats: GenerationStat[]): ModelSummary[] {
       avgTtftMs: avg(g.map((s) => s.ttftMs)),
       avgTotalMs: avg(g.map((s) => s.totalMs)),
       lastUsed: Math.max(...g.map((s) => s.startedAt)),
+      totalPromptTokens: sum(g.map((s) => s.promptTokens)),
+      totalCompletionTokens: sum(g.map((s) => s.completionTokens)),
+      avgPromptTokens: avg(g.map((s) => s.promptTokens)),
     }))
     .sort((a, b) => b.count - a.count)
 }
 
 export function formatStatLine(stat: MessageStat): string {
-  return `${stat.model} · ${stat.tokensPerSec.toFixed(1)} tok/s · first token ${stat.ttftMs}ms · total ${(stat.totalMs / 1000).toFixed(1)}s`
+  const base = `${stat.model} · ${stat.tokensPerSec.toFixed(1)} tok/s · first token ${stat.ttftMs}ms · total ${(stat.totalMs / 1000).toFixed(1)}s`
+  // promptTokens is absent on messages persisted before this field existed —
+  // omit the in/out segment rather than guessing at a value.
+  if (stat.promptTokens === undefined) return base
+  return `${base} · ↑${stat.promptTokens.toLocaleString()} in · ↓${stat.completionTokens.toLocaleString()} out`
 }

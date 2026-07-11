@@ -29,6 +29,7 @@ function newConversation(model: string): Conversation {
     model,
     effort: settings.defaultEffort,
     temperature: settings.defaultTemperature,
+    numCtx: settings.defaultNumCtx,
     messages: [],
   }
 }
@@ -64,6 +65,7 @@ function metaOf(c: Conversation): ConversationMeta {
     model: c.model,
     effort: c.effort,
     temperature: c.temperature,
+    numCtx: c.numCtx,
     kbId: c.kbId,
     personaId: c.personaId,
   }
@@ -214,6 +216,7 @@ export function useChat() {
           model: base.model,
           messages: apiMessages,
           temperature: base.temperature,
+          numCtx: base.numCtx,
           signal: controller.signal,
           onToken: (chunk) => {
             if (!firstTokenAt) firstTokenAt = performance.now()
@@ -332,6 +335,7 @@ export function useChat() {
     (temperature: number) => patchCurrent({ temperature }),
     [patchCurrent],
   )
+  const setNumCtx = useCallback((numCtx: number) => patchCurrent({ numCtx }), [patchCurrent])
   const setKb = useCallback(
     (kbId: string | undefined) => {
       setRagNotice(false)
@@ -462,6 +466,7 @@ export function useChat() {
     selectedModel: current.model,
     effort: current.effort,
     temperature: current.temperature,
+    numCtx: current.numCtx,
     kbId: current.kbId,
     personaId: current.personaId,
     // history
@@ -478,6 +483,7 @@ export function useChat() {
     setSelectedModel,
     setEffort,
     setTemperature,
+    setNumCtx,
     setKb,
     clearPersona,
     // actions

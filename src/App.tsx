@@ -19,6 +19,7 @@ import { TopBar } from './components/TopBar'
 import { HomeScreen } from './components/HomeScreen'
 import { MessageList } from './components/MessageList'
 import { ChatInput } from './components/ChatInput'
+import { ContextMeter } from './components/ContextMeter'
 import { SettingsModal } from './components/SettingsModal'
 import { CommandPalette, type PaletteCommand } from './components/CommandPalette'
 import { useChat } from './hooks/useChat'
@@ -30,6 +31,7 @@ import { useKbs } from './hooks/useKbs'
 import { useStudio } from './hooks/useStudio'
 import { useShortcuts } from './hooks/useShortcuts'
 import type { Persona } from './lib/studioStore'
+import { DEFAULT_NUM_CTX } from './constants'
 
 // Heavy/secondary views, split into their own chunks. StatsPage in particular
 // pulls in recharts, which is by far the largest dependency in the app.
@@ -75,6 +77,9 @@ export default function App() {
   )
 
   const empty = chat.messages.length === 0
+  // The context meter is measured, never estimated — the last assistant
+  // message's stat is the only source of "what the next turn actually carries".
+  const lastAssistantStat = [...chat.messages].reverse().find((m) => m.role === 'assistant')?.stat
 
   const pullPercent =
     pull.progress?.total && pull.progress.total > 0
@@ -279,6 +284,15 @@ export default function App() {
                   onRegenerate={chat.regenerate}
                   onContinue={chat.continueResponse}
                 />
+                {chat.selectedModel && (
+                  <div className="mx-auto w-full max-w-3xl px-4">
+                    <ContextMeter
+                      model={chat.selectedModel}
+                      numCtx={chat.numCtx ?? DEFAULT_NUM_CTX}
+                      stat={lastAssistantStat}
+                    />
+                  </div>
+                )}
                 <ChatInput variant="docked" {...composerProps} />
               </>
             )}

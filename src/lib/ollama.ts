@@ -1,5 +1,6 @@
 import type { OllamaModel } from '../types'
 import { loadAppSettings } from './appSettings'
+import { parseContextLength } from './context'
 
 /**
  * Base URL for every Ollama request. A custom host configured in Settings
@@ -40,6 +41,9 @@ export interface StreamChatParams {
   model: string
   messages: { role: string; content: string }[]
   temperature: number
+  /** Omitted when unset so behavior is unchanged for callers that don't pass it
+   *  — Ollama then falls back to its own default (4096), same as before. */
+  numCtx?: number
   signal: AbortSignal
   onToken: (chunk: string) => void
 }
@@ -50,12 +54,17 @@ export interface StreamChatParams {
  * Returns metadata from the done chunk.
  */
 export async function streamChat(params: StreamChatParams): Promise<ChatStreamResult> {
-  const { model, messages, temperature, signal, onToken } = params
+  const { model, messages, temperature, numCtx, signal, onToken } = params
 
   const res = await fetch(`${getOllamaBase()}/api/chat`, {
     method: 'POST',
     headers: JSON_HEADERS,
-    body: JSON.stringify({ model, stream: true, messages, options: { temperature } }),
+    body: JSON.stringify({
+      model,
+      stream: true,
+      messages,
+      options: { temperature, ...(numCtx !== undefined ? { num_ctx: numCtx } : {}) },
+    }),
     signal,
   })
 
@@ -143,6 +152,27 @@ export async function showModel(name: string): Promise<ModelDetails> {
   })
   if (!res.ok) throw new Error(await readError(res))
   return (await res.json()) as ModelDetails
+}
+
+const contextLengthCache = new Map<string, number | undefined>()
+
+/**
+ * Cached wrapper around showModel + parseContextLength. /api/show is a real
+ * network round-trip and the context meter's tooltip wants this per model
+ * name repeatedly, so results (including "unknown") are memoized for the
+ * life of the module.
+ */
+export async function getModelContextLength(name: string): Promise<number | undefined> {
+  if (contextLengthCache.has(name)) return contextLengthCache.get(name)
+  try {
+    const length = parseContextLength(await showModel(name))
+    contextLengthCache.set(name, length)
+    return length
+  } catch {
+    // Don't cache network failures — a transient hiccup shouldn't permanently
+    // hide the trained-max hint; the next call gets to try again.
+    return undefined
+  }
 }
 
 export interface BenchmarkResult {

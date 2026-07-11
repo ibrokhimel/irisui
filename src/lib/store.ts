@@ -16,6 +16,9 @@ export interface ConversationMeta {
   model: string
   effort: Effort
   temperature: number
+  /** num_ctx sent to Ollama for this chat. Optional so conversations
+   *  persisted before context-window tracking shipped load without migration. */
+  numCtx?: number
   /** Attached knowledge base for RAG-grounded replies. Optional so
    *  conversations persisted before v0.8 load without migration. */
   kbId?: string
