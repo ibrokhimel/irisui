@@ -21,7 +21,8 @@ import { HomeScreen } from './components/HomeScreen'
 import { MessageList } from './components/MessageList'
 import { ChatInput } from './components/ChatInput'
 import { ContextMeter } from './components/ContextMeter'
-import { SettingsModal } from './components/SettingsModal'
+import { SettingsModal, type Tab as SettingsTab } from './components/SettingsModal'
+import { MigrationNotice } from './components/MigrationNotice'
 import { CommandPalette, type PaletteCommand } from './components/CommandPalette'
 import { SystemMonitor } from './components/SystemMonitor'
 import { useChat } from './hooks/useChat'
@@ -35,6 +36,8 @@ import { useShortcuts } from './hooks/useShortcuts'
 import type { Persona } from './lib/studioStore'
 import { DEFAULT_NUM_CTX } from './constants'
 import { loadMonitorOpen, saveMonitorOpen } from './lib/system'
+import { dismissMigrationNotice, shouldShowMigrationNotice } from './lib/firstRun'
+import { isTauri } from './lib/http'
 
 // Heavy/secondary views, split into their own chunks. StatsPage in particular
 // pulls in recharts, which is by far the largest dependency in the app.
@@ -73,6 +76,10 @@ export default function App() {
   const { kbs, reload: reloadKbs } = useKbs()
   const { personas, prompts, reload: reloadStudio } = useStudio()
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [settingsTab, setSettingsTab] = useState<SettingsTab | undefined>(undefined)
+  const [migrationNoticeOpen, setMigrationNoticeOpen] = useState<boolean>(() =>
+    shouldShowMigrationNotice(isTauri(), localStorage),
+  )
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [monitorOpen, setMonitorOpen] = useState<boolean>(() => loadMonitorOpen())
@@ -110,6 +117,13 @@ export default function App() {
     const fav = (n: string) => (prefs.favorites.includes(n) ? 1 : 0)
     return [...chat.models].sort((a, b) => fav(b.name) - fav(a.name))
   }, [chat.models, prefs.favorites])
+
+  // Dismissal is persisted, so the notice is genuinely once-per-install —
+  // whether it was acted on or waved away.
+  const closeMigrationNotice = () => {
+    dismissMigrationNotice(localStorage)
+    setMigrationNoticeOpen(false)
+  }
 
   const openChat = () => setView('chat')
   const handleNewChat = () => {
@@ -337,7 +351,10 @@ export default function App() {
       <SettingsModal
         open={settingsOpen}
         theme={theme}
-        onClose={() => setSettingsOpen(false)}
+        onClose={() => {
+          setSettingsOpen(false)
+          setSettingsTab(undefined)
+        }}
         onSelectPreset={setPreset}
         onSelectAccent={setAccent}
         onReset={reset}
@@ -349,6 +366,17 @@ export default function App() {
           setSettingsOpen(false)
         }}
         onBeforeWipe={chat.stop}
+        initialTab={settingsTab}
+      />
+
+      <MigrationNotice
+        open={migrationNoticeOpen}
+        onImport={() => {
+          setSettingsTab('data')
+          setSettingsOpen(true)
+          closeMigrationNotice()
+        }}
+        onDismiss={closeMigrationNotice}
       />
 
       <CommandPalette open={paletteOpen} commands={paletteCommands} onClose={() => setPaletteOpen(false)} />
