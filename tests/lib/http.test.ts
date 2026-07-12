@@ -11,7 +11,7 @@ vi.mock('@tauri-apps/api/core', () => ({
   Channel: FakeChannel,
 }))
 
-const { appFetch, isTauri } = await import('../../src/lib/http')
+const { appFetch, isTauri, providerFetch } = await import('../../src/lib/http')
 
 const enc = (s: string) => Array.from(new TextEncoder().encode(s))
 
@@ -42,6 +42,39 @@ describe('appFetch outside Tauri', () => {
   })
 })
 
+describe('providerFetch', () => {
+  it('in Tauri, tells Rust which provider to inject a key for — the key never enters JS', async () => {
+    vi.stubGlobal('window', { __TAURI_INTERNALS__: {} })
+    respondWith(200, ['{"ok":true}'])
+
+    await providerFetch('openai', 'https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      body: '{}',
+    })
+
+    const [cmd, args] = invoke.mock.calls[0]
+    expect(cmd).toBe('http_fetch')
+    expect(args.req.url).toBe('https://api.openai.com/v1/chat/completions')
+    expect(args.req.authProvider).toBe('openai')
+    // The request the webview hands to Rust carries no Authorization header —
+    // Rust attaches it. Prove the key path is not in JS at all.
+    const headerNames = args.req.headers.map(([k]: [string]) => k.toLowerCase())
+    expect(headerNames).not.toContain('authorization')
+  })
+
+  it('in the browser, rewrites the provider URL onto its same-origin proxy path', async () => {
+    const globalFetch = vi.fn().mockResolvedValue(new Response('{}'))
+    vi.stubGlobal('fetch', globalFetch)
+    expect(isTauri()).toBe(false)
+
+    await providerFetch('anthropic', 'https://api.anthropic.com/v1/messages', { method: 'POST' })
+
+    expect(globalFetch).toHaveBeenCalledOnce()
+    expect(globalFetch.mock.calls[0][0]).toBe('/anthropic/v1/messages')
+    expect(invoke).not.toHaveBeenCalled()
+  })
+})
+
 describe('appFetch inside Tauri', () => {
   it('streams the body through the Rust http_fetch command', async () => {
     vi.stubGlobal('window', { __TAURI_INTERNALS__: {} })
@@ -55,6 +88,8 @@ describe('appFetch inside Tauri', () => {
     expect(cmd).toBe('http_fetch')
     expect(args.req.url).toBe('http://localhost:11434/api/tags')
     expect(args.req.method).toBe('GET')
+    // appFetch never sets authProvider — only providerFetch does.
+    expect(args.req.authProvider).toBeNull()
   })
 
   it('sends NO Origin header — Ollama 403s any origin outside its allowlist', async () => {

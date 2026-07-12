@@ -8,7 +8,9 @@ use std::sync::{Arc, Mutex};
 use futures_util::StreamExt;
 use sysinfo::{Disks, System};
 use tauri::ipc::Channel;
-use tauri::{Manager, State};
+use tauri::{AppHandle, Manager, State};
+
+mod keys;
 
 // ── HTTP bridge ──────────────────────────────────────────────────────────────
 //
@@ -25,6 +27,11 @@ struct HttpRequest {
     url: String,
     headers: Vec<(String, String)>,
     body: Option<Vec<u8>>,
+    /// When set, the stored key for this provider is injected as an auth header
+    /// here in Rust — so a cloud API key never has to reach the webview. The
+    /// webview only ever names the provider; it cannot read the key back.
+    #[serde(rename = "authProvider", default)]
+    auth_provider: Option<String>,
 }
 
 /// Streamed back to JS over a Channel. `head` arrives once, then zero or more
@@ -61,6 +68,7 @@ impl HttpState {
 
 #[tauri::command]
 async fn http_fetch(
+    app: AppHandle,
     id: u32,
     req: HttpRequest,
     on_event: Channel<HttpEvent>,
@@ -83,6 +91,16 @@ async fn http_fetch(
     let mut builder = state.client().request(method, &req.url);
     for (name, value) in &req.headers {
         builder = builder.header(name, value);
+    }
+    // Inject the provider's API key server-side. A missing key is not an error
+    // here — the provider will answer 401 and the adapter surfaces it, same as
+    // the browser proxy, rather than the webview having to reason about keys.
+    if let Some(provider) = &req.auth_provider {
+        if let Some(key) = keys::key_for(&app, provider) {
+            for (name, value) in keys::auth_headers(provider, &key) {
+                builder = builder.header(name, value);
+            }
+        }
     }
     if let Some(body) = req.body {
         builder = builder.body(body);
@@ -300,7 +318,10 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             system_stats,
             http_fetch,
-            http_cancel
+            http_cancel,
+            keys::keys_list,
+            keys::keys_set,
+            keys::keys_delete
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

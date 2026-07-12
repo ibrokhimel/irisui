@@ -30,7 +30,11 @@ const BODYLESS = new Set([101, 103, 204, 205, 304])
 
 let nextRequestId = 1
 
-async function tauriFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+async function tauriFetch(
+  input: RequestInfo | URL,
+  init?: RequestInit,
+  authProvider?: string,
+): Promise<Response> {
   // Normalizing through Request gives us method/url/header/body defaulting for
   // free, and matches what a real fetch() would have sent.
   const request = new Request(input, init)
@@ -119,6 +123,7 @@ async function tauriFetch(input: RequestInfo | URL, init?: RequestInit): Promise
         url: request.url,
         headers,
         body: rawBody.byteLength > 0 ? [...new Uint8Array(rawBody)] : null,
+        authProvider: authProvider ?? null,
       },
       onEvent: channel,
     }).catch((e: unknown) => {
@@ -135,4 +140,44 @@ export async function appFetch(
 ): Promise<Response> {
   if (isTauri()) return tauriFetch(input, init)
   return globalThis.fetch(input, init)
+}
+
+/**
+ * Base URL each cloud provider is reached at, and the same-origin proxy path the
+ * browser dev server rewrites it to. Kept here, next to the transport, because
+ * the two environments reach providers by different mechanisms:
+ *
+ *  - Desktop (Tauri): the request goes out from Rust with its real URL, and the
+ *    stored key is injected there (authProvider), so the key never enters the
+ *    webview.
+ *  - Browser (`npm run dev`): the Vite plugin proxies `/openai` and `/anthropic`
+ *    and injects the key in Node. Same security property, different layer.
+ */
+const PROVIDER_PROXY: Record<string, { base: string; path: string }> = {
+  openai: { base: 'https://api.openai.com', path: '/openai' },
+  anthropic: { base: 'https://api.anthropic.com', path: '/anthropic' },
+}
+
+/**
+ * Make an authenticated request to a cloud provider without the key ever
+ * touching the webview. `url` is the provider's real endpoint
+ * (e.g. `https://api.openai.com/v1/chat/completions`); the key is attached
+ * server-side in whichever environment we are in. Streaming, cancellation, and
+ * error handling are identical to appFetch — this only changes where auth is
+ * applied. Adapters call this; they never see a key.
+ */
+export async function providerFetch(
+  providerId: string,
+  url: string,
+  init?: RequestInit,
+): Promise<Response> {
+  if (isTauri()) return tauriFetch(url, init, providerId)
+
+  // Browser: rewrite the provider's real URL onto its same-origin proxy path so
+  // the Vite plugin can inject the key. Unknown provider → fetch as-is.
+  const provider = PROVIDER_PROXY[providerId]
+  if (provider && url.startsWith(provider.base)) {
+    return globalThis.fetch(provider.path + url.slice(provider.base.length), init)
+  }
+  return globalThis.fetch(url, init)
 }
