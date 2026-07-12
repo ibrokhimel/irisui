@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { AnimatePresence, m } from 'motion/react'
-import { Database, MessageSquare, Mic, Palette, Wifi, X } from 'lucide-react'
+import { Database, KeyRound, MessageSquare, Mic, Palette, Wifi, X } from 'lucide-react'
 import type { CustomThemeVars, ThemePreset, ThemeSettings } from '../theme'
 import type { AppSettings } from '../lib/appSettings'
 import { SPRING } from '../lib/motion'
@@ -8,15 +8,17 @@ import { SettingsAppearance } from './SettingsAppearance'
 import { SettingsChatDefaults } from './SettingsChatDefaults'
 import { SettingsConnection } from './SettingsConnection'
 import { SettingsData } from './SettingsData'
+import { SettingsProviders } from './SettingsProviders'
 import { SettingsVoice } from './SettingsVoice'
 
-export type Tab = 'appearance' | 'chat' | 'voice' | 'connection' | 'data'
+export type Tab = 'appearance' | 'chat' | 'voice' | 'connection' | 'providers' | 'data'
 
 const TABS: { id: Tab; label: string; icon: typeof Palette }[] = [
   { id: 'appearance', label: 'Appearance', icon: Palette },
   { id: 'chat', label: 'Chat defaults', icon: MessageSquare },
   { id: 'voice', label: 'Voice', icon: Mic },
   { id: 'connection', label: 'Connection', icon: Wifi },
+  { id: 'providers', label: 'Providers', icon: KeyRound },
   { id: 'data', label: 'Data', icon: Database },
 ]
 
@@ -153,6 +155,7 @@ export function SettingsModal({
             {tab === 'connection' && (
               <SettingsConnection settings={appSettings} onUpdate={onUpdateAppSettings} />
             )}
+            {tab === 'providers' && <SettingsProviders />}
             {tab === 'data' && <SettingsData onBeforeWipe={onBeforeWipe} />}
           </div>
         </div>

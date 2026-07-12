@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useMemo, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useState } from 'react'
 import { AnimatePresence, LazyMotion, MotionConfig, m } from 'motion/react'
 import {
   Activity,
@@ -38,6 +38,10 @@ import type { Persona } from './lib/studioStore'
 import { loadMonitorOpen, saveMonitorOpen } from './lib/system'
 import { dismissMigrationNotice, shouldShowMigrationNotice } from './lib/firstRun'
 import { isTauri } from './lib/http'
+import { listAllModels } from './lib/providers/registry'
+import { fetchKeyStatus } from './lib/providers/keys'
+import type { ModelInfo } from './lib/providers/types'
+import { PROVIDER_IDS, type ProviderId } from './lib/providers/modelRef'
 
 // Heavy/secondary views, split into their own chunks. StatsPage in particular
 // pulls in recharts, which is by far the largest dependency in the app.
@@ -97,11 +101,24 @@ export default function App() {
       ? Math.min(100, Math.round(((pull.progress.completed ?? 0) / pull.progress.total) * 100))
       : null
 
-  // Favorited models float to the top of the chat model picker.
-  const orderedModels = useMemo(() => {
-    const fav = (n: string) => (prefs.favorites.includes(n) ? 1 : 0)
-    return [...chat.models].sort((a, b) => fav(b.name) - fav(a.name))
-  }, [chat.models, prefs.favorites])
+  // All models across configured providers, for the chat picker. Ollama is
+  // always configured; a cloud provider counts only once it has a stored key.
+  const [providerModels, setProviderModels] = useState<ModelInfo[]>([])
+  const [configuredProviders, setConfiguredProviders] = useState<ProviderId[]>(['ollama'])
+  const reloadProviders = useCallback(async () => {
+    const status = await fetchKeyStatus()
+    const configured: ProviderId[] = [
+      'ollama',
+      ...PROVIDER_IDS.filter((p) => p !== 'ollama' && status.some((k) => k.id === p)),
+    ]
+    setConfiguredProviders(configured)
+    setProviderModels(await listAllModels(configured))
+  }, [])
+  // Refresh when Ollama's models change (came online / model installed) and when
+  // Settings closes, since a cloud key may have just been added there.
+  useEffect(() => {
+    void reloadProviders()
+  }, [reloadProviders, chat.models, settingsOpen])
 
   // Dismissal is persisted, so the notice is genuinely once-per-install —
   // whether it was acted on or waved away.
@@ -182,7 +199,9 @@ export default function App() {
     setEffort: chat.setEffort,
     temperature: chat.temperature,
     setTemperature: chat.setTemperature,
-    models: orderedModels,
+    models: providerModels,
+    configuredProviders,
+    favorites: prefs.favorites,
     selectedModel: chat.selectedModel,
     onSelectModel: chat.setSelectedModel,
     kbs,

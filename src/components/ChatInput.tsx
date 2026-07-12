@@ -13,7 +13,9 @@ import {
   X,
 } from 'lucide-react'
 import { SPRING, TAP } from '../lib/motion'
-import type { Effort, OllamaModel, OllamaStatus } from '../types'
+import type { Effort, OllamaStatus } from '../types'
+import type { ModelInfo } from '../lib/providers/types'
+import { PROVIDER_IDS, formatModelRef, parseModelRef, type ProviderId } from '../lib/providers/modelRef'
 import { EFFORT_OPTIONS, TEMP_MAX, TEMP_MIN, TEMP_STEP } from '../constants'
 import { DEFAULT_EMBED_MODEL } from '../lib/rag'
 import { useSpeechInput } from '../hooks/useSpeech'
@@ -31,6 +33,23 @@ const STATUS_DOT: Record<OllamaStatus, string> = {
   offline: 'bg-rose-500',
 }
 
+const PROVIDER_LABEL: Record<ProviderId, string> = {
+  ollama: 'Ollama (local)',
+  openai: 'OpenAI',
+  anthropic: 'Anthropic',
+}
+
+/** Favorites first within a provider, then alphabetical by label. */
+function sortForPicker(group: ModelInfo[], favorites: string[]): ModelInfo[] {
+  const fav = (m: ModelInfo) => (favorites.includes(m.ref) ? 1 : 0)
+  return [...group].sort((a, b) => fav(b) - fav(a) || a.label.localeCompare(b.label))
+}
+
+/** A short, honest price tag for a model row; empty when the price is unknown. */
+function priceTag(m: ModelInfo): string {
+  return m.pricing ? ` · ≈ $${m.pricing.inputPerMTok}/$${m.pricing.outputPerMTok} per Mtok` : ''
+}
+
 export function ChatInput({
   variant,
   input,
@@ -45,6 +64,8 @@ export function ChatInput({
   temperature,
   setTemperature,
   models,
+  configuredProviders,
+  favorites,
   selectedModel,
   onSelectModel,
   kbs,
@@ -77,9 +98,13 @@ export function ChatInput({
   setEffort: (effort: Effort) => void
   temperature: number
   setTemperature: (value: number) => void
-  models: OllamaModel[]
+  models: ModelInfo[]
+  /** Providers the user has set up (Ollama always; cloud only with a key). */
+  configuredProviders: ProviderId[]
+  favorites: string[]
+  /** A qualified model ref, e.g. "ollama:qwen2.5:0.5b" or "openai:gpt-4o-mini". */
   selectedModel: string
-  onSelectModel: (name: string) => void
+  onSelectModel: (ref: string) => void
   kbs: KbOption[]
   selectedKbId?: string
   onSelectKb: (id: string | undefined) => void
@@ -141,6 +166,26 @@ export function ChatInput({
   }, [controlsOpen, kbOpen])
 
   const sendDisabled = input.trim().length === 0 || !canSend
+
+  // Old conversations store bare Ollama names; picker options are qualified refs,
+  // so normalize the <select> value to match an option.
+  const selectedParsed = selectedModel ? parseModelRef(selectedModel) : null
+  const selectedRef = selectedParsed ? formatModelRef(selectedParsed.providerId, selectedParsed.id) : ''
+  const selectedProvider: ProviderId = selectedParsed?.providerId ?? 'ollama'
+  // The status dot tracks the SELECTED model's provider — a cloud model must not
+  // show "Ollama offline". A cloud provider is "live" once it has a key.
+  const dotClass =
+    selectedProvider === 'ollama'
+      ? STATUS_DOT[status]
+      : configuredProviders.includes(selectedProvider)
+        ? 'bg-emerald-500'
+        : 'bg-amber-500'
+  // Keyless cloud providers still render a section (a disabled "add a key" hint),
+  // so the picker is only truly empty when there is nothing to show at all.
+  const anyKeylessCloud = PROVIDER_IDS.some(
+    (pid) => pid !== 'ollama' && !configuredProviders.includes(pid),
+  )
+  const pickerEmpty = models.length === 0 && !anyKeylessCloud
 
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -386,24 +431,45 @@ export function ChatInput({
                 </button>
               )}
               <div className="flex items-center gap-1.5 rounded-lg px-2 py-1.5 transition hover:bg-panel">
-                <span className={'h-1.5 w-1.5 shrink-0 rounded-full ' + STATUS_DOT[status]} />
+                <span className={'h-1.5 w-1.5 shrink-0 rounded-full ' + dotClass} />
                 <div className="relative flex items-center">
                   <select
-                    value={selectedModel}
+                    value={selectedRef}
                     onChange={(e) => onSelectModel(e.target.value)}
-                    disabled={isStreaming || models.length === 0}
+                    disabled={isStreaming}
                     aria-label="Selected model"
-                    className="max-w-[170px] cursor-pointer appearance-none truncate bg-transparent pr-4 text-xs font-medium text-muted outline-none transition hover:text-fg disabled:cursor-not-allowed"
+                    className="max-w-[190px] cursor-pointer appearance-none truncate bg-transparent pr-4 text-xs font-medium text-muted outline-none transition hover:text-fg disabled:cursor-not-allowed"
                   >
-                    {models.length === 0 ? (
-                      <option value="">No models</option>
-                    ) : (
-                      models.map((m) => (
-                        <option key={m.name} value={m.name}>
-                          {m.name}
-                        </option>
-                      ))
-                    )}
+                    {pickerEmpty && <option value="">No models</option>}
+                    {PROVIDER_IDS.map((pid) => {
+                      const group = sortForPicker(
+                        models.filter((mm) => mm.providerId === pid),
+                        favorites,
+                      )
+                      const configured = configuredProviders.includes(pid)
+                      if (group.length === 0) {
+                        // Ollama-with-nothing and configured-but-empty need no
+                        // section; a keyless cloud provider gets a disabled hint.
+                        if (pid === 'ollama' || configured) return null
+                        return (
+                          <optgroup key={pid} label={PROVIDER_LABEL[pid]}>
+                            <option value="" disabled>
+                              Add a {PROVIDER_LABEL[pid]} key in Settings → Providers
+                            </option>
+                          </optgroup>
+                        )
+                      }
+                      return (
+                        <optgroup key={pid} label={PROVIDER_LABEL[pid]}>
+                          {group.map((mm) => (
+                            <option key={mm.ref} value={mm.ref}>
+                              {mm.label}
+                              {priceTag(mm)}
+                            </option>
+                          ))}
+                        </optgroup>
+                      )
+                    })}
                   </select>
                   <ChevronDown className="pointer-events-none absolute right-0 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted" />
                 </div>
