@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ChatMessage, Effort, OllamaModel, OllamaStatus } from '../types'
-import { fetchModels, isAbortError, resolveNumCtx, streamChat } from '../lib/ollama'
+import { fetchModels, isAbortError, resolveNumCtx } from '../lib/ollama'
+import { resolve } from '../lib/providers/registry'
+import { lookupPricing } from '../lib/providers/pricing'
+import { formatModelRef, parseModelRef } from '../lib/providers/modelRef'
 import type { AutoContext } from '../lib/kvCache'
 import { effectiveRamGb } from '../lib/hardware'
 import { contextVerdict, projectContextUse, wasTruncated } from '../lib/contextGuard'
@@ -19,6 +22,25 @@ import { retrieveContext } from '../lib/retrieve'
 import type { RagContext } from '../lib/retrieve'
 import { resolveSystemPrompt } from '../lib/personaPrompt'
 import type { Persona } from '../lib/studioStore'
+
+/** The bare Ollama model name for a ref, or null if the ref names a cloud provider. */
+function ollamaId(ref: string): string | null {
+  const { providerId, id } = parseModelRef(ref)
+  return providerId === 'ollama' ? id : null
+}
+
+/**
+ * Whether a model ref is a valid choice given the installed Ollama models. A
+ * cloud ref is always "usable" here — its real availability (a configured key)
+ * is enforced at generation time, never by silently swapping to another model.
+ * An Ollama ref is usable only when that model is actually installed.
+ */
+function usableRef(ref: string, installed: OllamaModel[]): boolean {
+  if (!ref) return false
+  const id = ollamaId(ref)
+  if (id === null) return true
+  return installed.some((m) => m.name === id)
+}
 
 /** New chats start from the Chat defaults in Settings — read fresh here (not at
  *  import time) so a Settings change applies to the very next chat. */
@@ -111,14 +133,17 @@ export function useChat() {
   const model = current.model
   const numCtxSetting = current.numCtx ?? loadAppSettings().defaultNumCtx
   useEffect(() => {
-    if (!model) {
+    // Context-window sizing is Ollama-only; a cloud model (or none) has no local
+    // window to resolve, so the context meter simply goes blank for it.
+    const id = model ? ollamaId(model) : null
+    if (!id) {
       setCtx(undefined)
       return
     }
     let cancelled = false
-    const modelBytes = models.find((m) => m.name === model)?.size ?? 0
+    const modelBytes = models.find((m) => m.name === id)?.size ?? 0
     void resolveNumCtx({
-      model,
+      model: id,
       setting: numCtxSetting,
       modelBytes,
       ramGb: effectiveRamGb(),
@@ -156,13 +181,15 @@ export function useChat() {
       } else {
         setStatus('online')
         // Give the open chat a valid model if it lacks one (prefer the default).
+        // Ollama coming online must not clobber a cloud model the user picked, so
+        // a still-usable ref (cloud, or an installed Ollama model) is kept as-is.
         setCurrent((c) => {
-          if (c.model && list.some((m) => m.name === c.model)) return c
+          if (usableRef(c.model, list)) return c
           const pref = loadModelPrefs().defaultModel
           // Never auto-select an embedding model as the chat model.
           const chatable = list.filter((m) => !isLikelyEmbeddingModel(m.name))
-          const fallback = (chatable[0] ?? list[0]).name
-          const model = pref && list.some((m) => m.name === pref) ? pref : fallback
+          const fallback = formatModelRef('ollama', (chatable[0] ?? list[0]).name)
+          const model = usableRef(pref, list) ? pref : fallback
           return { ...c, model }
         })
       }
@@ -243,55 +270,60 @@ export function useChat() {
 
       let content = existing
       let received = false
-      const t0 = performance.now()
-      let firstTokenAt = 0
       let messageStat: MessageStat | undefined
-      // Resolve the window for THIS request rather than trusting the effect's
-      // state, which may still be in flight on the first send of a new chat.
-      const resolved =
-        ctxRef.current ??
-        (await resolveNumCtx({
-          model: base.model,
-          setting: base.numCtx ?? loadAppSettings().defaultNumCtx,
-          modelBytes: models.find((m) => m.name === base.model)?.size ?? 0,
-          ramGb: effectiveRamGb(),
-        }))
+
+      // base.model is a qualified ref (e.g. "ollama:qwen2.5:0.5b" or
+      // "openai:gpt-4o-mini"); route it to the provider that serves it. modelId
+      // is the provider-native name — the Ollama model list is keyed by that,
+      // not the qualified ref.
+      const { adapter, modelId } = resolve(base.model)
+
+      // Context-window sizing is an Ollama-only concept. For a cloud model there
+      // is nothing to resolve, and probing Ollama for a model it doesn't have
+      // would just add a failing round-trip before every generation.
+      let numCtx: number | undefined
+      if (adapter.id === 'ollama') {
+        const resolved =
+          ctxRef.current ??
+          (await resolveNumCtx({
+            model: modelId,
+            setting: base.numCtx ?? loadAppSettings().defaultNumCtx,
+            modelBytes: models.find((m) => m.name === modelId)?.size ?? 0,
+            ramGb: effectiveRamGb(),
+          }))
+        numCtx = resolved.numCtx
+      }
 
       try {
-        const meta = await streamChat({
-          model: base.model,
+        const usage = await adapter.streamChat({
+          model: modelId,
           messages: apiMessages,
           temperature: base.temperature,
-          numCtx: resolved.numCtx,
           signal: controller.signal,
           onToken: (chunk) => {
-            if (!firstTokenAt) firstTokenAt = performance.now()
             received = true
             content += chunk
             applyContent(content)
           },
+          // Ollama's num_ctx; cloud adapters ignore options they don't understand.
+          providerOptions: numCtx !== undefined ? { num_ctx: numCtx } : undefined,
         })
-        if (meta.completionTokens > 0) {
+        if (usage.completionTokens > 0) {
           const stat = computeStat({
             conversationId: base.id,
             model: base.model,
             startedAt: now,
-            usage: {
-              promptTokens: meta.promptTokens,
-              completionTokens: meta.completionTokens,
-              ttftMs: firstTokenAt ? firstTokenAt - t0 : 0,
-              totalMs: performance.now() - t0,
-              serverEvalNs: meta.evalDurationNs,
-              loadDurationNs: meta.loadDurationNs,
-            },
+            usage,
+            pricing: lookupPricing(base.model),
           })
           // If Ollama evaluated a prompt that filled the whole window, it
           // context-shifted: this reply was generated against a conversation
           // with its oldest turns silently dropped. Mark it — the answer looks
           // perfectly normal, and only this flag reveals it isn't trustworthy.
+          // Cloud providers don't context-shift this way, so the flag is Ollama-only.
           messageStat = {
             ...toMessageStat(stat),
-            truncated: wasTruncated(meta.promptTokens, resolved.numCtx),
+            truncated: adapter.id === 'ollama' && wasTruncated(usage.promptTokens, numCtx ?? 0),
           }
           void addStat(stat)
         }
@@ -420,8 +452,9 @@ export function useChat() {
         .join('\n\n')
 
       let summary = ''
-      await streamChat({
-        model: base.model,
+      const { adapter, modelId } = resolve(base.model)
+      await adapter.streamChat({
+        model: modelId,
         messages: [
           {
             role: 'system',
@@ -436,11 +469,12 @@ export function useChat() {
           },
         ],
         temperature: 0.2,
-        numCtx: ctxRef.current?.numCtx,
         signal: controller.signal,
         onToken: (chunk) => {
           summary += chunk
         },
+        providerOptions:
+          adapter.id === 'ollama' && ctxRef.current ? { num_ctx: ctxRef.current.numCtx } : undefined,
       })
 
       if (!summary.trim()) throw new Error('empty summary')
@@ -536,10 +570,10 @@ export function useChat() {
     setRagNotice(false)
     const pref = loadModelPrefs().defaultModel
     const chatable = models.filter((m) => !isLikelyEmbeddingModel(m.name))
-    const model =
-      pref && models.some((m) => m.name === pref)
-        ? pref
-        : currentRef.current.model || chatable[0]?.name || models[0]?.name || ''
+    const fallbackName = chatable[0]?.name ?? models[0]?.name
+    const model = usableRef(pref, models)
+      ? pref
+      : currentRef.current.model || (fallbackName ? formatModelRef('ollama', fallbackName) : '')
     setCurrent(newConversation(model))
     setInput('')
   }, [models])
@@ -551,12 +585,15 @@ export function useChat() {
       setRagNotice(false)
       const pref = loadModelPrefs().defaultModel
       const chatable = models.filter((m) => !isLikelyEmbeddingModel(m.name))
+      const fallbackName = chatable[0]?.name ?? models[0]?.name
       const model =
-        persona.defaultModel && models.some((m) => m.name === persona.defaultModel)
+        persona.defaultModel && usableRef(persona.defaultModel, models)
           ? persona.defaultModel
-          : pref && models.some((m) => m.name === pref)
+          : usableRef(pref, models)
             ? pref
-            : chatable[0]?.name || models[0]?.name || ''
+            : fallbackName
+              ? formatModelRef('ollama', fallbackName)
+              : ''
       const conv = newConversation(model)
       setCurrent({
         ...conv,
@@ -577,9 +614,14 @@ export function useChat() {
       try {
         const conv = await store.get(id)
         if (!conv) return
-        const model = models.some((m) => m.name === conv.model)
+        // Keep the saved model if it's still usable (cloud, or installed Ollama);
+        // otherwise fall back to an installed Ollama model. resolve() reads a
+        // legacy bare name as Ollama, so old conversations load unchanged.
+        const model = usableRef(conv.model, models)
           ? conv.model
-          : models[0]?.name || conv.model
+          : models[0]
+            ? formatModelRef('ollama', models[0].name)
+            : conv.model
         setCurrent({ ...conv, model })
         setInput('')
       } catch {

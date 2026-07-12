@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Effort, OllamaModel } from '../types'
 import { DEFAULT_TEMPERATURE, EFFORT_PROMPTS } from '../constants'
-import { isAbortError, streamChat } from '../lib/ollama'
+import { isAbortError } from '../lib/ollama'
+import { resolve } from '../lib/providers/registry'
+import { lookupPricing } from '../lib/providers/pricing'
 import { computeStat, toMessageStat } from '../lib/stats'
 import type { MessageStat } from '../lib/stats'
 import { addStat } from '../lib/statsStore'
@@ -90,17 +92,17 @@ export function useArena(models: OllamaModel[]) {
       chosenModels.map(async (model, i) => {
         const controller = controllers[i]
         const startedAt = Date.now()
-        const t0 = performance.now()
-        let firstTokenAt = 0
         let content = ''
         try {
-          const meta = await streamChat({
-            model,
+          // Route each column to the provider that serves its model; the adapter
+          // measures its own timings and returns provider-neutral usage.
+          const { adapter, modelId } = resolve(model)
+          const usage = await adapter.streamChat({
+            model: modelId,
             messages: apiMessages,
             temperature,
             signal: controller.signal,
             onToken: (chunk) => {
-              if (!firstTokenAt) firstTokenAt = performance.now()
               content += chunk
               setColumns((prev) => {
                 const next = [...prev]
@@ -110,19 +112,13 @@ export function useArena(models: OllamaModel[]) {
             },
           })
           let stat: MessageStat | undefined
-          if (meta.completionTokens > 0) {
+          if (usage.completionTokens > 0) {
             const s = computeStat({
               conversationId: ARENA_CONVERSATION_ID,
               model,
               startedAt,
-              usage: {
-                promptTokens: meta.promptTokens,
-                completionTokens: meta.completionTokens,
-                ttftMs: firstTokenAt ? firstTokenAt - t0 : 0,
-                totalMs: performance.now() - t0,
-                serverEvalNs: meta.evalDurationNs,
-                loadDurationNs: meta.loadDurationNs,
-              },
+              usage,
+              pricing: lookupPricing(model),
             })
             stat = toMessageStat(s)
             void addStat(s)
