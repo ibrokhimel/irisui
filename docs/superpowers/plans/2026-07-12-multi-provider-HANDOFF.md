@@ -5,6 +5,43 @@
 
 ---
 
+## ✅ COMPLETED on `feat/integration` (2026-07-12, later session)
+
+Tasks 6–12 are implemented, integrated, and verified against the running app —
+but **Tauri-native, not browser-only**, because `feat/integration` merged the
+desktop shell (the app now ships as a packaged Tauri binary where the Vite proxy
+does not exist). The one structural change from the plan:
+
+- **Transport is `providerFetch` (src/lib/http.ts), not raw `/openai` proxy fetch.**
+  In the desktop app it routes through the Rust `http_fetch` command, which
+  injects the stored key server-side (`authProvider`); in the browser it rewrites
+  onto the `/openai`·`/anthropic` Vite proxy paths. Either way the key never
+  enters the webview.
+- **Keys are held by Rust** (`src-tauri/src/keys.rs`, commands
+  `keys_list`/`keys_set`/`keys_delete`) in the packaged app, mirroring
+  `vite/keyStore.ts`'s security model. `src/lib/providers/keyClient.ts` dispatches
+  between the two; `src/lib/providers/keys.ts` is a thin provider-typed view over
+  it (NOT the plan's browser-only version).
+- **Qualified-ref ripple handled.** Because model refs are now qualified
+  (`ollama:x`) while the Ollama model list is keyed by bare names, every selection
+  site in `useChat` (refresh, newChat, persona, selectChat, the context effect,
+  summarize) and `useArena` goes through `usableRef`/`ollamaId` helpers. Context
+  sizing + the truncation flag are gated to Ollama.
+
+Commits: `2948d7d` (Rust key store + injection), `213b149` (adapters + registry +
+routing), `6ba2b1e` (picker + settings tab). 358 tests / 44 files green, `tsc` +
+release build clean. Verified over CDP against the running app: key masking,
+server-side injection, provider-grouped picker, keyless-cloud disabled sections,
+and Ollama chat still streaming with no false cost.
+
+**Still owed before shipping cloud chat to users:** a real end-to-end run with a
+genuine OpenAI/Anthropic key (only Ollama was exercised live — no cloud keys were
+available), and verifying the **placeholder prices** in `pricing.ts` (risk #1
+below still stands). The mechanism is done; a live cloud call and correct numbers
+are not yet confirmed.
+
+---
+
 ## Where the work lives
 
 | | |
