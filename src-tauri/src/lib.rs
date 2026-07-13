@@ -95,7 +95,18 @@ async fn http_fetch(
     // Inject the provider's API key server-side. A missing key is not an error
     // here — the provider will answer 401 and the adapter surfaces it, same as
     // the browser proxy, rather than the webview having to reason about keys.
+    //
+    // The url and the provider both come from the webview, so the key only goes
+    // out if the two agree: otherwise anything running in the page could ask us
+    // to attach the user's key to a host it picked.
     if let Some(provider) = &req.auth_provider {
+        if !keys::may_authorize(provider, &req.url) {
+            finish(&state);
+            return Err(format!(
+                "refusing to send {provider} credentials to {}",
+                req.url
+            ));
+        }
         if let Some(key) = keys::key_for(&app, provider) {
             for (name, value) in keys::auth_headers(provider, &key) {
                 builder = builder.header(name, value);

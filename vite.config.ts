@@ -16,12 +16,12 @@ const pkg = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 
 // command — a release build serves static files with nothing behind them, so a
 // dev-server middleware would 404 in the shipped binary.
 //
-// KNOWN GAP: the cloud providers below are the one thing still bound to this dev
-// server. The key store and header injection run in Node (vite/providerProxyPlugin.ts)
-// so key material never reaches the page — but that means OpenAI and Anthropic
-// work under `npm run dev` and are unreachable from the packaged app. Closing it
-// means porting the key store and proxy to Rust commands, the same move already
-// made for /api/system. Until then, cloud chat is dev-only.
+// The cloud proxies below are the dev-mode half of a two-sided split. Under
+// `npm run dev` the key store and header injection run in Node
+// (vite/providerProxyPlugin.ts); in the packaged app the same job is done by Rust
+// (keys_* commands and http_fetch's authProvider). Either way key material stays
+// out of the page — the browser only ever sees masked keys. Callers pick a side
+// via isTauri() in src/lib/http.ts, so neither half is reachable from the other.
 export default defineConfig({
   plugins: [react(), tailwindcss(), providerProxyPlugin()],
   define: {

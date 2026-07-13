@@ -20,10 +20,13 @@ pub struct KeyInfo {
 }
 
 /// Last four characters only — enough to recognize a key, useless to steal.
+/// Counts and slices by char: a pasted key with any multi-byte character would
+/// panic a byte-index slice mid-codepoint.
 fn mask(key: &str) -> String {
     let n = key.chars().count();
     if n > 4 {
-        format!("…{}", &key[key.len() - 4..])
+        let suffix: String = key.chars().skip(n - 4).collect();
+        format!("…{suffix}")
     } else {
         "…".to_string()
     }
@@ -127,9 +130,29 @@ pub fn auth_headers(provider: &str, key: &str) -> Vec<(String, String)> {
     }
 }
 
+/// The only host each provider's key may ever be sent to.
+fn auth_host(provider: &str) -> Option<&'static str> {
+    match provider {
+        "openai" => Some("api.openai.com"),
+        "anthropic" => Some("api.anthropic.com"),
+        _ => None,
+    }
+}
+
+/// Whether `url` may carry `provider`'s key. http_fetch takes both the url and
+/// the provider from the webview, so without this check any JS running in the
+/// page could aim a stored key at a host of its choosing. Requires https and an
+/// exact host match; an unknown provider authorizes nothing.
+pub fn may_authorize(provider: &str, url: &str) -> bool {
+    let Ok(parsed) = reqwest::Url::parse(url) else {
+        return false;
+    };
+    parsed.scheme() == "https" && auth_host(provider) == parsed.host_str()
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{auth_headers, mask};
+    use super::{auth_headers, mask, may_authorize};
 
     #[test]
     fn masks_to_last_four() {
@@ -140,6 +163,28 @@ mod tests {
     fn masks_short_keys_without_leaking() {
         assert_eq!(mask("abc"), "…");
         assert_eq!(mask("abcd"), "…");
+    }
+
+    #[test]
+    fn masks_multibyte_keys_without_panicking() {
+        // Byte index len-4 lands inside the emoji; slicing there would panic.
+        assert_eq!(mask("a🔑bcd"), "…🔑bcd");
+    }
+
+    #[test]
+    fn authorizes_only_the_providers_own_host() {
+        assert!(may_authorize("openai", "https://api.openai.com/v1/chat/completions"));
+        assert!(may_authorize("anthropic", "https://api.anthropic.com/v1/messages"));
+        // The key must not follow the url anywhere else.
+        assert!(!may_authorize("openai", "https://attacker.example/v1/chat/completions"));
+        assert!(!may_authorize("openai", "https://api.anthropic.com/v1/messages"));
+        // Nor to a lookalike host that merely ends with the real one.
+        assert!(!may_authorize("openai", "https://api.openai.com.attacker.example/v1"));
+        // Nor in the clear.
+        assert!(!may_authorize("openai", "http://api.openai.com/v1/chat/completions"));
+        // An unknown provider authorizes nothing.
+        assert!(!may_authorize("ollama", "https://api.openai.com/v1/chat/completions"));
+        assert!(!may_authorize("openai", "not a url"));
     }
 
     #[test]
