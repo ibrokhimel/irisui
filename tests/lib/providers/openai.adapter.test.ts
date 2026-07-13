@@ -56,4 +56,18 @@ describe('openaiAdapter.streamChat', () => {
       signal: new AbortController().signal, onToken: () => {},
     })).rejects.toThrow('Incorrect API key provided')
   })
+
+  // An error can arrive in-band on a stream that already returned 200, so the
+  // res.ok check above never sees it.
+  it('rejects on an in-band error chunk, even after streaming partial text', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => sse([
+      'data: {"choices":[{"delta":{"content":"partial"}}]}\n\n',
+      'data: {"error":{"message":"The server had an error"}}\n\n',
+    ])))
+
+    await expect(openaiAdapter.streamChat({
+      model: 'gpt-4o-mini', messages: [], temperature: 0,
+      signal: new AbortController().signal, onToken: () => {},
+    })).rejects.toThrow('The server had an error')
+  })
 })

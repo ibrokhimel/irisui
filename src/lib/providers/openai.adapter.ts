@@ -76,12 +76,24 @@ export const openaiAdapter: ProviderAdapter = {
       let obj: {
         choices?: { delta?: { content?: unknown } }[]
         usage?: { prompt_tokens?: unknown; completion_tokens?: unknown }
+        error?: { message?: unknown }
       }
       try {
         obj = JSON.parse(data)
       } catch {
         return // a malformed frame must not kill the stream
       }
+
+      // An error can arrive in-band on a stream that already returned 200, so
+      // res.ok above does not catch it. Falling through would present a truncated
+      // answer as a complete one.
+      if (obj.error) {
+        const message = obj.error.message
+        throw new Error(
+          typeof message === 'string' && message ? message : 'The model stopped mid-response',
+        )
+      }
+
       const delta = obj.choices?.[0]?.delta?.content
       if (typeof delta === 'string' && delta) {
         if (!firstAt) firstAt = performance.now()

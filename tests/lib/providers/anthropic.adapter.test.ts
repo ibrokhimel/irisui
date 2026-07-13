@@ -69,4 +69,30 @@ describe('anthropicAdapter.streamChat', () => {
     })
     expect(tokens.join('')).toBe('x')
   })
+
+  // Anthropic reports overload mid-stream, in-band, on a 200 that already passed
+  // the res.ok check. Resolving here would bill the user for a truncated answer
+  // and present it as complete.
+  it('rejects on an in-band error event, even after streaming partial text', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => sse([
+      'data: {"type":"content_block_delta","delta":{"type":"text_delta","text":"partial"}}\n\n',
+      'data: {"type":"error","error":{"type":"overloaded_error","message":"Overloaded"}}\n\n',
+    ])))
+
+    await expect(anthropicAdapter.streamChat({
+      model: 'm', messages: [], temperature: 0,
+      signal: new AbortController().signal, onToken: () => {},
+    })).rejects.toThrow('Overloaded')
+  })
+
+  it('rejects with a fallback message when the error frame carries none', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => sse([
+      'data: {"type":"error","error":{"type":"api_error"}}\n\n',
+    ])))
+
+    await expect(anthropicAdapter.streamChat({
+      model: 'm', messages: [], temperature: 0,
+      signal: new AbortController().signal, onToken: () => {},
+    })).rejects.toThrow(/stopped mid-response/)
+  })
 })

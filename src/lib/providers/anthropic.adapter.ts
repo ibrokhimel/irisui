@@ -97,11 +97,23 @@ export const anthropicAdapter: ProviderAdapter = {
         delta?: { type?: unknown; text?: unknown }
         message?: { usage?: { input_tokens?: unknown } }
         usage?: { output_tokens?: unknown }
+        error?: { message?: unknown }
       }
       try {
         ev = JSON.parse(data)
       } catch {
         return // a malformed frame must not kill the stream
+      }
+
+      // Anthropic reports mid-stream failures (overloaded_error, …) in-band on a
+      // 200 that already passed the res.ok check above. Ignoring them the way we
+      // ignore a ping would hand back a truncated answer as if it were complete —
+      // billed, and with nothing to tell the user it was cut short.
+      if (ev.type === 'error') {
+        const message = ev.error?.message
+        throw new Error(
+          typeof message === 'string' && message ? message : 'The model stopped mid-response',
+        )
       }
 
       // Anthropic's stream is event-typed rather than a flat delta feed; unknown
